@@ -1,0 +1,68 @@
+name: Publish User Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/user_documentation/**"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to publish docs from (defaults to main)"
+        required: false
+        default: "main"
+      publish_target:
+        description: "Publisher backend (e.g. clickup, confluence)"
+        required: false
+        default: "clickup"
+      docs_dir:
+        description: "Path to docs directory (relative to repo root)"
+        required: false
+        default: "docs/user_documentation"
+
+concurrency:
+  group: publish-user-docs
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Publish docs
+        env:
+          PUBLISH_TARGET: ${{ github.event.inputs.publish_target || 'clickup' }}
+          DOCS_DIR: ${{ github.event.inputs.docs_dir || 'docs/user_documentation' }}
+          # ClickUp secrets (used when PUBLISH_TARGET=clickup)
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          CLICKUP_WORKSPACE_ID: ${{ vars.CLICKUP_WORKSPACE_ID }}
+          CLICKUP_FOLDER_ID: ${{ vars.CLICKUP_FOLDER_ID }}
+          CLICKUP_IMAGE_HOST_TASK_ID: ${{ vars.CLICKUP_IMAGE_HOST_TASK_ID }}
+          # Confluence secrets (used when PUBLISH_TARGET=confluence)
+          CONFLUENCE_URL: ${{ secrets.CONFLUENCE_URL }}
+          CONFLUENCE_USERNAME: ${{ secrets.CONFLUENCE_USERNAME }}
+          CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
+          CONFLUENCE_SPACE_KEY: ${{ vars.CONFLUENCE_SPACE_KEY }}
+          CONFLUENCE_PARENT_PAGE_ID: ${{ vars.CONFLUENCE_PARENT_PAGE_ID }}
+        run: python scripts/publish_docs.py --target "$PUBLISH_TARGET" --docs-dir "$DOCS_DIR"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## User Documentation Publish" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** \`${{ github.event.inputs.branch || github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target:** \`${{ github.event.inputs.publish_target || 'clickup' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

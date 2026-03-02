@@ -1,0 +1,9 @@
+{
+  "docsDir": "../../docs/user_documentation",
+  "outputJson": "../src/generated/help-docs.json",
+  "outputImagesDir": "../public/help-images",
+  "helpRoutePrefix": "/help",
+  "categories": {
+    "getting-started": { "title": "Getting Started", "order": 1 }
+  }
+}
