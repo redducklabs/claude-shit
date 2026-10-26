@@ -7,11 +7,11 @@ Claude Code configuration shared across all of my machines: global instructions,
 | Repo path | Installed to | Purpose |
 |---|---|---|
 | `claude_md/CLAUDE.md` | `~/.claude/CLAUDE.md` | Global instructions for every project |
-| `rules/*.md` | `~/.claude/rules/` | Personal rules; `paths:` frontmatter limits a rule to matching files |
-| `hooks/*.sh` | `~/.claude/hooks/claude-shit/` | Hook scripts (see [Hooks](#hooks)) |
+| `rules/**/*.md` | `~/.claude/rules/` | Personal rules; `paths:` frontmatter limits a rule to matching files |
+| `hooks/**/*.sh` | `~/.claude/hooks/claude-shit/` | Hook scripts (see [Hooks](#hooks)) |
 | `settings/settings.shared.json` | merged into `~/.claude/settings.json` | Permission rules, attribution, hooks, plugins, preferences |
-| `agents/**` | `~/.claude/agents/` | Subagent definitions |
-| `commands/*.md` | `~/.claude/commands/` | Slash commands |
+| `agents/**/*.md` | `~/.claude/agents/` | Subagent definitions |
+| `commands/**/*.md` | `~/.claude/commands/` | Slash commands |
 
 Not installed: `templates/project-CLAUDE.md` (a starter for project-level CLAUDE.md files), `mcp/` (MCP setup guide), and `user_documentation/` (a docs pattern to copy into projects).
 
@@ -20,7 +20,8 @@ Not installed: `templates/project-CLAUDE.md` (a starter for project-level CLAUDE
 The sync script merges `settings.shared.json` into each machine's `settings.json` instead of replacing it, so keys specific to one machine (`statusLine`, `voice`, `remoteControlAtStartup`, local `allow` rules) are kept.
 
 - Objects merge key by key, arrays merge as a union, and the shared value replaces a scalar.
-- The script records what it applied in `~/.claude/.claude-shit/applied-settings.json`. When an entry is later removed from the repo, the next sync removes it from `settings.json`, but leaves entries you added locally.
+- The script records what it applied in `~/.claude/.claude-shit/applied-settings.json`. When an entry or key is later removed from the repo, the next sync removes it from `settings.json`, but keeps entries you added and values you changed locally.
+- On Windows the rewritten `settings.json` encodes `'`, `<`, `>`, and `&` as `'`-style escapes. That's valid JSON; it's how Windows PowerShell 5.1 writes it.
 - `__CLAUDE_SHIT_HOOKS__` in hook commands becomes the absolute path of the installed hooks folder.
 - `settings.local.json` is never touched.
 
@@ -33,8 +34,10 @@ Requires Git for Windows, which Claude Code also uses to run hooks.
 ```powershell
 winget install Gitleaks.Gitleaks
 git clone https://github.com/redducklabs/claude-shit.git D:\repos\claude-shit
-powershell -NoProfile -File D:\repos\claude-shit\install\sync.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\repos\claude-shit\install\sync.ps1
 ```
+
+`-ExecutionPolicy Bypass` applies only to that one process. Windows client editions default to the `Restricted` policy, which refuses to run scripts; with `RemoteSigned` or a looser policy you can leave the flag out.
 
 ### Linux and WSL
 
@@ -42,6 +45,7 @@ WSL has its own `~/.claude`, separate from the Windows one, so run this inside e
 
 ```bash
 sudo apt install -y jq git
+mkdir -p ~/.local/bin
 curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz -C ~/.local/bin gitleaks
 git clone https://github.com/redducklabs/claude-shit.git ~/repos/claude-shit
 ~/repos/claude-shit/install/sync.sh
@@ -62,7 +66,7 @@ On Windows:
 
 ```powershell
 git -C D:\repos\claude-shit pull
-powershell -NoProfile -File D:\repos\claude-shit\install\sync.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\repos\claude-shit\install\sync.ps1
 ```
 
 Running the script again is safe: when nothing changed it prints `Up to date.` The commit last synced is in `~/.claude/.claude-shit/synced-commit`.
@@ -75,7 +79,7 @@ Running the script again is safe: when nothing changed it prints `Up to date.` T
 | `--force` | `-Force` | Overwrite or remove files that were edited locally since the last sync |
 | `--target DIR` | `-Target DIR` | Use another config directory (default: `$CLAUDE_CONFIG_DIR`, else `~/.claude`) |
 
-Exit codes: `0` success, `1` error (or pending changes with `--check`), `3` some files were skipped because they were edited locally.
+Exit codes: `0` success, `1` error (or pending changes with `--check`), `2` unknown option, `3` some files were skipped because they were edited locally.
 
 ## Change the configuration
 
