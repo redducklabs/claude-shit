@@ -31,7 +31,7 @@ jobs:
       - name: PSScriptAnalyzer
         shell: powershell
         run: |
-          $results = Invoke-ScriptAnalyzer -Path install/sync.ps1, tests/test-sync.ps1 -Severity Error, Warning
+          $results = 'install/sync.ps1', 'tests/test-sync.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error, Warning }
           $results | Format-Table -AutoSize | Out-String | Write-Output
           if ($results) { exit 1 }
       - name: Sync tests (sync.ps1, plus parity with sync.sh)
