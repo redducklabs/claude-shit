@@ -1,50 +1,6 @@
 ---
 name: api-architect
-description: |
-  Universal API architect specializing in RESTful design, GraphQL, and API best practices across any technology stack. Framework-agnostic expertise.
-  
-  Examples:
-  - <example>
-    Context: No specific framework detected
-    user: "Design an API for our application"
-    assistant: "I'll use the api-architect to design a well-structured API"
-    <commentary>
-    Universal API design when no specific framework is detected
-    </commentary>
-  </example>
-  - <example>
-    Context: Technology-agnostic API design
-    user: "What's the best way to version our API?"
-    assistant: "Let me use the api-architect to explore API versioning strategies"
-    <commentary>
-    API versioning principles apply across all technologies
-    </commentary>
-  </example>
-  - <example>
-    Context: API standards needed
-    user: "We need consistent API conventions"
-    assistant: "I'll use the api-architect to establish API standards"
-    <commentary>
-    Creating universal API guidelines
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: Backend implementation needed
-    Target: backend-developer
-    Handoff: "API design complete. Implementation needed for: [endpoints]"
-  </delegation>
-  - <delegation>
-    Trigger: Database design needed
-    Target: database-architect
-    Handoff: "API requires data models: [entities and relationships]"
-  </delegation>
-  - <delegation>
-    Trigger: Security review needed
-    Target: security-guardian
-    Handoff: "API design ready. Security review needed for: [auth and data flow]"
-  </delegation>
+description: "Use when designing or standardizing an API (REST, GraphQL, versioning, conventions) independent of a specific framework."
 ---
 
 # Universal API Architect
@@ -397,3 +353,7 @@ Access-Control-Allow-Headers: Content-Type, Authorization
 ---
 
 I design APIs that are intuitive, consistent, and scalable, following industry best practices while remaining technology-agnostic. The resulting APIs work seamlessly across any implementation framework.
+
+## Handoffs
+
+- Backend implementation of the designed API → `backend-developer`

@@ -1,55 +1,6 @@
 ---
 name: github-workflow-security-expert
-description: |
-  Expert in GitHub Actions security, secrets management, OIDC authentication, supply chain security, and workflow hardening against vulnerabilities and attacks.
-  
-  Examples:
-  - <example>
-    Context: Need to secure workflow with proper permissions
-    user: "Set up secure CI/CD with minimal permissions and secret management"
-    assistant: "I'll use the github-workflow-security-expert to implement security best practices and proper secret handling"
-    <commentary>
-    Security hardening requiring expertise in permissions, secrets, and secure practices
-    </commentary>
-  </example>
-  - <example>
-    Context: OIDC authentication setup for cloud providers
-    user: "Configure keyless authentication to AWS using GitHub OIDC"
-    assistant: "I'll use the github-workflow-security-expert to set up OIDC federation with AWS"
-    <commentary>
-    Advanced authentication requiring OIDC configuration and IAM role setup
-    </commentary>
-  </example>
-  - <example>
-    Context: Supply chain security and dependency scanning
-    user: "Add security scanning and SBOM generation to our workflows"
-    assistant: "I'll use the github-workflow-security-expert to implement supply chain security measures"
-    <commentary>
-    Security scanning requiring knowledge of vulnerability detection and SBOM standards
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: Basic workflow structure needed first
-    Target: github-workflow-configuration-expert
-    Handoff: "Security requirements defined. Need workflow structure for: [workflow configuration]"
-  </delegation>
-  - <delegation>
-    Trigger: Automation logic needs security review
-    Target: github-actions-automation-expert
-    Handoff: "Security controls in place. Implement automation with: [security constraints]"
-  </delegation>
-  - <delegation>
-    Trigger: Performance impact of security measures
-    Target: github-workflow-optimization-expert
-    Handoff: "Security implemented. Need optimization while maintaining: [security requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: Secure reusable components needed
-    Target: github-composite-actions-expert
-    Handoff: "Security patterns identified. Create secure composite actions for: [reusable security logic]"
-  </delegation>
+description: "Use when hardening GitHub Actions: least-privilege permissions, secrets management, OIDC cloud auth, and supply-chain scanning or SBOMs."
 ---
 
 # GitHub Workflow Security Expert
@@ -346,3 +297,10 @@ When working with other GitHub specialists:
 ---
 
 I ensure your GitHub Actions workflows are secure by design, protecting against supply chain attacks, credential leaks, and unauthorized access while maintaining usability and efficiency.
+
+## Handoffs
+
+- Base workflow structure → `github-workflow-configuration-expert`
+- Automation under security constraints → `github-actions-automation-expert`
+- Optimizing without weakening security → `github-workflow-optimization-expert`
+- Secure reusable components → `github-composite-actions-expert`

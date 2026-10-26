@@ -1,0 +1,96 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "defaultMode": "auto",
+    "deny": [
+      "Bash(terraform apply *)",
+      "Bash(terraform destroy *)",
+      "Bash(kubectl apply *)",
+      "Bash(kubectl create *)",
+      "Bash(kubectl replace *)",
+      "Bash(kubectl patch *)",
+      "Bash(kubectl edit *)",
+      "Bash(kubectl scale *)",
+      "Bash(kubectl set *)",
+      "Bash(helm install *)",
+      "Bash(helm upgrade *)",
+      "Bash(helm uninstall *)",
+      "Bash(helm rollback *)"
+    ],
+    "ask": [
+      "Bash(kubectl delete *)",
+      "Edit(//**/.env*)"
+    ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit *)",
+            "command": "bash \"__CLAUDE_SHIT_HOOKS__/secret-scan.sh\"",
+            "timeout": 120,
+            "statusMessage": "Scanning the commit for secrets"
+          },
+          {
+            "type": "command",
+            "if": "Bash(kubectl *)",
+            "command": "bash \"__CLAUDE_SHIT_HOOKS__/kube-context.sh\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "if": "Bash(helm *)",
+            "command": "bash \"__CLAUDE_SHIT_HOOKS__/kube-context.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "security-compliance@claude-code-workflows": true,
+    "cloud-infrastructure@claude-code-workflows": false,
+    "cicd-automation@claude-code-workflows": false,
+    "project-manager@claude-code-plugins": false,
+    "deploy-on-aws@claude-plugins-official": false
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/anthropics/claude-plugins-official.git"
+      }
+    },
+    "claude-code-workflows": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/wshobson/agents.git"
+      }
+    },
+    "claude-code-plugins": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/redducklabs/claude-code.git"
+      }
+    }
+  },
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "xhigh",
+  "outputStyle": "Concise",
+  "workflowKeywordTriggerEnabled": false,
+  "promptSuggestionEnabled": false,
+  "autoContinueAtUsageLimit": false,
+  "teammateMode": "auto"
+}

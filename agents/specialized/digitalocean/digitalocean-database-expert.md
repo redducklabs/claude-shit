@@ -1,50 +1,6 @@
 ---
 name: digitalocean-database-expert
-description: |
-  Expert in Digital Ocean Managed Databases, specializing in PostgreSQL, MySQL, Redis, and MongoDB clusters on Digital Ocean platform.
-  
-  Examples:
-  - <example>
-    Context: Database setup and configuration needed
-    user: "I need to set up a highly available PostgreSQL cluster on Digital Ocean"
-    assistant: "I'll use the digitalocean-database-expert to design and deploy your database cluster"
-    <commentary>
-    This agent specializes in Digital Ocean's managed database services and best practices
-    </commentary>
-  </example>
-  - <example>
-    Context: Database performance issues
-    user: "My Digital Ocean MySQL database is running slowly"
-    assistant: "Let me use the digitalocean-database-expert to analyze and optimize performance"
-    <commentary>
-    The agent has deep expertise in database performance tuning on Digital Ocean
-    </commentary>
-  </example>
-  - <example>
-    Context: Database migration or backup
-    user: "I need to migrate my database to Digital Ocean's managed service"
-    assistant: "I'll use the digitalocean-database-expert to plan and execute the migration"
-    <commentary>
-    This agent understands migration strategies and Digital Ocean database features
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: When VPC networking setup is needed for databases
-    Target: digitalocean-infrastructure-expert
-    Handoff: "Database requirements defined. Need VPC setup: [network requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: When database security hardening is required
-    Target: digitalocean-security-expert
-    Handoff: "Database deployed. Need security configuration: [security requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: When monitoring setup is needed for databases
-    Target: digitalocean-monitoring-expert
-    Handoff: "Database cluster ready. Need monitoring for: [metrics and alerts]"
-  </delegation>
+description: "Use when setting up, migrating, tuning, or backing up DigitalOcean Managed Databases (PostgreSQL, MySQL, Redis, MongoDB)."
 ---
 
 # Digital Ocean Database Expert - Managed Database Specialist
@@ -644,3 +600,9 @@ When database issues occur:
 ---
 
 Remember: I specialize in making Digital Ocean managed databases production-ready, focusing on performance, reliability, and data integrity. I ensure databases are properly configured for their specific workload requirements.
+
+## Handoffs
+
+- VPC networking for databases → `digitalocean-infrastructure-expert`
+- Database security hardening → `digitalocean-security-expert`
+- Database monitoring and alerts → `digitalocean-monitoring-expert`

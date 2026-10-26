@@ -1,37 +1,6 @@
 ---
 name: cert-manager-expert
-description: |
-  Expert in cert-manager setup, configuration, and troubleshooting for Kubernetes clusters with specialized knowledge of DigitalOcean environments, NGINX ingress integration, and automated TLS certificate management.
-  
-  Examples:
-  - <example>
-    Context: Setting up automated TLS certificates for a new Kubernetes application
-    user: "I need to set up cert-manager with Let's Encrypt for my DigitalOcean Kubernetes cluster"
-    assistant: "I'll use the cert-manager-expert to configure automated TLS certificate management"
-    <commentary>
-    This agent specializes in cert-manager setup, ACME configurations, and DigitalOcean-specific requirements
-    </commentary>
-  </example>
-  - <example>
-    Context: Debugging certificate issuance problems
-    user: "My certificates are stuck in pending state and won't get issued"
-    assistant: "Let me use the cert-manager-expert to troubleshoot the certificate issuance"
-    <commentary>
-    This agent has comprehensive troubleshooting knowledge for cert-manager challenges and common issues
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: When underlying Kubernetes infrastructure needs modification
-    Target: digitalocean-kubernetes-expert
-    Handoff: "Cert-manager configured. Need cluster networking/RBAC adjustments: [specific requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: When DNS configuration beyond cert-manager is needed
-    Target: digitalocean-infrastructure-expert
-    Handoff: "Certificate setup complete. DNS records need: [specific DNS changes]"
-  </delegation>
+description: "Use when setting up, configuring, or troubleshooting cert-manager and automated TLS certificates on Kubernetes, especially DigitalOcean with NGINX ingress."
 tools: Read, Write, Edit, Glob, Grep, Bash, LS
 ---
 

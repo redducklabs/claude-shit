@@ -1,55 +1,6 @@
 ---
 name: github-composite-actions-expert
-description: |
-  Expert in creating reusable GitHub composite actions, action development best practices, GitHub Marketplace publishing, and building modular workflow components.
-  
-  Examples:
-  - <example>
-    Context: Need to create reusable workflow components
-    user: "Extract common CI/CD steps into reusable composite actions"
-    assistant: "I'll use the github-composite-actions-expert to create modular, reusable composite actions"
-    <commentary>
-    Reusable component creation requiring composite action design and best practices
-    </commentary>
-  </example>
-  - <example>
-    Context: Publishing actions to GitHub Marketplace
-    user: "Create and publish a custom action for our deployment process"
-    assistant: "I'll use the github-composite-actions-expert to develop and publish a marketplace-ready action"
-    <commentary>
-    Action development requiring marketplace standards and documentation
-    </commentary>
-  </example>
-  - <example>
-    Context: Converting repetitive workflows to reusable components
-    user: "We have the same setup steps in 20 different workflows"
-    assistant: "I'll use the github-composite-actions-expert to consolidate these into composite actions"
-    <commentary>
-    Workflow refactoring requiring identification of patterns and composite action creation
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: Workflow configuration for using composite actions
-    Target: github-workflow-configuration-expert
-    Handoff: "Composite actions created. Need workflow integration for: [action usage patterns]"
-  </delegation>
-  - <delegation>
-    Trigger: Security review for composite actions
-    Target: github-workflow-security-expert
-    Handoff: "Actions developed. Need security review for: [action permissions and inputs]"
-  </delegation>
-  - <delegation>
-    Trigger: Performance optimization for composite actions
-    Target: github-workflow-optimization-expert
-    Handoff: "Actions functional. Need optimization for: [performance improvements]"
-  </delegation>
-  - <delegation>
-    Trigger: Automation using composite actions
-    Target: github-actions-automation-expert
-    Handoff: "Reusable components ready. Implement automation with: [composite action integration]"
-  </delegation>
+description: "Use when extracting repeated workflow steps into reusable composite actions or building and publishing actions to the GitHub Marketplace."
 ---
 
 # GitHub Composite Actions Expert
@@ -445,3 +396,10 @@ When working with other GitHub specialists:
 ---
 
 I specialize in transforming repetitive workflow patterns into elegant, reusable composite actions that promote consistency, reduce maintenance burden, and accelerate development across your organization's GitHub repositories.
+
+## Handoffs
+
+- Integrating actions into workflows → `github-workflow-configuration-expert`
+- Security review of actions → `github-workflow-security-expert`
+- Performance optimization → `github-workflow-optimization-expert`
+- Automation built on the actions → `github-actions-automation-expert`
