@@ -88,7 +88,9 @@ If a file in `~/.claude` was edited directly (for example, Claude added a note t
 
 Both hooks are bash scripts. On Windows, Claude Code runs them with Git Bash.
 
-- **`secret-scan.sh`** runs before every `git commit` Claude makes and scans the changes being committed with gitleaks. It blocks the commit when gitleaks finds a secret, when the scan fails, or when gitleaks isn't installed. Limitation: it scans the repository in the session's working directory, so `git -C <dir> commit` or `cd <dir> && git commit` into a different repository isn't scanned.
+- **`secret-scan.sh`** runs before every `git commit` Claude makes. It scans the staged changes and the unstaged changes to tracked files with gitleaks, and blocks the commit when gitleaks finds a secret, when the scan fails, or when gitleaks isn't installed.
+  - Because the hook runs before the whole command, it blocks a command that stages and commits in one step (`git add . && git commit ...`): the new files wouldn't be staged yet when it scans. Claude then stages and commits in separate commands.
+  - Limitation: it scans the repository in the session's working directory, so `git -C <dir> commit` or `cd <dir> && git commit` into a different repository isn't scanned.
 - **`kube-context.sh`** runs before every `kubectl` or `helm` command and tells Claude which kubectl context is active. It never blocks.
 
 ## What belongs where

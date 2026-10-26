@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook, run for Bash calls matching `git commit *`.
-# Scans what the commit would include with gitleaks and blocks the call (exit 2)
-# when it finds a secret, when gitleaks is missing, or when the scan itself fails.
-# Limitations: it scans the repository in the session's working directory, so a
+# Scans the staged and unstaged changes to tracked files with gitleaks and blocks the
+# call (exit 2) when it finds a secret, when gitleaks is missing, or when the scan fails.
+# The hook runs before the whole Bash command, so a `git add` chained in the same
+# command hasn't staged anything yet; such commands are blocked with a request to
+# stage first and commit in a separate command.
+# Limitation: it scans the repository in the session's working directory, so a
 # `git -C <dir> commit` or `cd <dir> && git commit` into another repo is not covered.
 set -u
 
@@ -41,13 +44,16 @@ report() {
   fi
 }
 
+if printf '%s' "$input" | grep -Eq 'git[[:space:]]+([^[:space:]"]+[[:space:]]+){0,3}(add|stage)([[:space:]]|"|\\)'; then
+  echo "Blocked: this command stages files and commits in one step, so the new changes can't be scanned before the commit runs. Run the git add/stage in its own command first, then git commit separately." >&2
+  exit 2
+fi
+
 out=$(scan --staged); rc=$?
 report staged "$out" "$rc"
 
-# `git commit -a` / `--all` also commits unstaged changes to tracked files.
-if printf '%s' "$input" | grep -Eq 'git commit[^"]*[[:space:]](-[a-zA-Z]*a[a-zA-Z]*|--all)([[:space:]]|\\|")'; then
-  out=$(scan); rc=$?
-  report unstaged "$out" "$rc"
-fi
+# Unstaged changes to tracked files: `git commit -a`, `--all`, or a pathspec commits them too.
+out=$(scan); rc=$?
+report unstaged "$out" "$rc"
 
 exit 0

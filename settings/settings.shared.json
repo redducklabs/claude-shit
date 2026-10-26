@@ -6,21 +6,35 @@
     "defaultMode": "auto",
     "deny": [
       "Bash(terraform apply *)",
+      "Bash(terraform * apply *)",
       "Bash(terraform destroy *)",
+      "Bash(terraform * destroy *)",
       "Bash(kubectl apply *)",
+      "Bash(kubectl * apply *)",
       "Bash(kubectl create *)",
+      "Bash(kubectl * create *)",
       "Bash(kubectl replace *)",
+      "Bash(kubectl * replace *)",
       "Bash(kubectl patch *)",
+      "Bash(kubectl * patch *)",
       "Bash(kubectl edit *)",
+      "Bash(kubectl * edit *)",
       "Bash(kubectl scale *)",
+      "Bash(kubectl * scale *)",
       "Bash(kubectl set *)",
+      "Bash(kubectl * set *)",
       "Bash(helm install *)",
+      "Bash(helm * install *)",
       "Bash(helm upgrade *)",
+      "Bash(helm * upgrade *)",
       "Bash(helm uninstall *)",
-      "Bash(helm rollback *)"
+      "Bash(helm * uninstall *)",
+      "Bash(helm rollback *)",
+      "Bash(helm * rollback *)"
     ],
     "ask": [
       "Bash(kubectl delete *)",
+      "Bash(kubectl * delete *)",
       "Edit(//**/.env*)"
     ]
   },

@@ -36,18 +36,19 @@ scan() { # scan <command> -> sets rc, err, ncalls
 # secret-scan.sh
 STUB_RC=0 scan 'git commit -m \"fix a bug\"'
 assert_eq "clean commit allowed" 0 "$rc"
-assert_eq "staged changes scanned once" 1 "$ncalls"
+assert_eq "staged and unstaged changes scanned" 2 "$ncalls"
 assert_contains "scan uses --staged" "--staged" "$(cat "$calls")"
 
-STUB_RC=0 scan 'git commit -am \"msg\"'
-assert_eq "commit -am allowed when clean" 0 "$rc"
-assert_eq "commit -am also scans unstaged" 2 "$ncalls"
+STUB_RC=0 scan 'git add . && git commit -m \"msg\"'
+assert_eq "chained add and commit blocked" 2 "$rc"
+assert_contains "chained add message" "stages files and commits in one step" "$err"
+assert_eq "chained add not scanned" 0 "$ncalls"
 
-STUB_RC=0 scan 'git commit --all -m \"msg\"'
-assert_eq "commit --all also scans unstaged" 2 "$ncalls"
+STUB_RC=0 scan 'git -C sub stage -A; git commit -m x'
+assert_eq "chained git stage with options blocked" 2 "$rc"
 
-STUB_RC=0 scan 'git commit --amend --no-edit'
-assert_eq "commit --amend scans staged only" 1 "$ncalls"
+STUB_RC=0 scan 'git commit -m \"address review\"'
+assert_eq "commit message mentioning address is allowed" 0 "$rc"
 
 export STUB_RC=3
 scan 'git commit -m \"x\"'
