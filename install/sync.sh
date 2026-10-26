@@ -19,7 +19,7 @@ while [ $# -gt 0 ]; do
     --force) FORCE=1 ;;
     --target) TARGET=${2:?--target needs a directory}; shift ;;
     -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unknown option: $1" >&2; exit 2 ;;
+    *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
 done
@@ -27,13 +27,17 @@ done
 die() { echo "error: $*" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || die "jq is required (Debian/Ubuntu: sudo apt install jq; macOS: brew install jq)"
 if command -v sha256sum >/dev/null 2>&1; then
-  sha() { sha256sum "$1" | cut -d' ' -f1; }
+  # Hash stdin: sha256sum prefixes the hash with a backslash when the file name has one.
+  sha() { sha256sum <"$1" | cut -d' ' -f1; }
 elif command -v shasum >/dev/null 2>&1; then
-  sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+  sha() { shasum -a 256 <"$1" | cut -d' ' -f1; }
 else
   die "sha256sum or shasum is required"
 fi
 
+# Absolute, because the hook commands written into settings.json embed this path.
+mkdir -p "$TARGET"
+TARGET=$(cd "$TARGET" && pwd)
 STATE=$TARGET/.claude-shit
 MANIFEST=$STATE/manifest.tsv
 APPLIED=$STATE/applied-settings.json
@@ -59,16 +63,17 @@ fi
 declare -A NEW=()
 
 # Source file -> destination relative to TARGET.
+list_files() { # list_files <repo dir> <name pattern>: matching files, if the directory exists
+  if [ -d "$REPO/$1" ]; then (cd "$REPO" && find "$1" -type f -name "$2" | sort); fi
+}
 mapping() {
+  local f
   printf '%s\t%s\n' "claude_md/CLAUDE.md" "CLAUDE.md"
-  (cd "$REPO" && find rules commands -type f -name '*.md' 2>/dev/null | sort) | while read -r f; do
+  { list_files rules '*.md'; list_files commands '*.md'; list_files agents '*.md'; } | while read -r f; do
     printf '%s\t%s\n' "$f" "$f"
   done
-  (cd "$REPO" && find hooks -type f -name '*.sh' | sort) | while read -r f; do
+  list_files hooks '*.sh' | while read -r f; do
     printf '%s\t%s\n' "$f" "hooks/claude-shit/${f#hooks/}"
-  done
-  (cd "$REPO" && find agents -type f -name '*.md' | sort) | while read -r f; do
-    printf '%s\t%s\n' "$f" "$f"
   done
 }
 
@@ -104,9 +109,13 @@ sync_file() { # sync_file <src relative to REPO> <dest relative to TARGET>
   NEW[$rel]=$want
 }
 
+# Build the whole list before changing anything: a partial list would make the
+# removal pass below delete files the repo still ships.
+[ -f "$REPO/claude_md/CLAUDE.md" ] || die "$REPO/claude_md/CLAUDE.md is missing; is this the claude-shit repository?"
+pairs=$(mapping) || die "could not list the repository's files"
 while IFS=$'\t' read -r src rel; do
   sync_file "$src" "$rel"
-done < <(mapping)
+done <<<"$pairs"
 
 # Files this repo installed before but no longer ships.
 for rel in "${!OLD[@]}"; do
@@ -133,20 +142,26 @@ if command -v cygpath >/dev/null 2>&1; then hooks_path=$(cygpath -m "$HOOKS_DIR"
 shared=$(jq --arg dir "$hooks_path" 'walk(if type == "string" then gsub("__CLAUDE_SHIT_HOOKS__"; $dir) else . end)' "$REPO/settings/settings.shared.json") \
   || die "settings/settings.shared.json is not valid JSON"
 settings=$TARGET/settings.json
-current='{}'
-if [ -f "$settings" ]; then
-  current=$(jq '.' "$settings") || die "$settings is not valid JSON; fix it before syncing"
-fi
-previous='{}'
-[ -f "$APPLIED" ] && previous=$(jq '.' "$APPLIED")
+read_json() { # read_json <file>: its JSON object, or {} when the file is missing or empty
+  if [ ! -f "$1" ]; then echo '{}'; return; fi
+  jq -s 'if length == 0 then {} elif (.[0] | type) == "object" then .[0] else error("not a JSON object") end' "$1"
+}
+current=$(read_json "$settings") || die "$settings is not valid JSON; fix it before syncing"
+previous=$(read_json "$APPLIED") || die "$APPLIED is not valid JSON; delete it and sync again"
 
 merged=$(jq -n --argjson cur "$current" --argjson prev "$previous" --argjson new "$shared" '
+  # $n is null under a key the repo dropped; local additions and changes survive.
   def strip($p; $n):
     if type == "object" and ($p | type) == "object" then
       reduce ($p | keys_unsorted[]) as $k (.;
-        if ($n | type) == "object" and ($n | has($k)) then
-          (if has($k) then .[$k] |= strip($p[$k]; $n[$k]) else . end)
-        else del(.[$k]) end)
+        if has($k) | not then .
+        elif ($n | type) == "object" and ($n | has($k)) then .[$k] |= strip($p[$k]; $n[$k])
+        else (.[$k] | strip($p[$k]; null)) as $v
+          | if $v == $p[$k]
+               or ($v == {} and ($p[$k] | type) == "object")
+               or ($v == [] and ($p[$k] | type) == "array")
+            then del(.[$k]) else .[$k] = $v end
+        end)
     elif type == "array" and ($p | type) == "array" then
       map(. as $x | select((any($p[]; . == $x) | not) or (($n | type) == "array" and any($n[]; . == $x))))
     else . end;

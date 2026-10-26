@@ -26,7 +26,8 @@ $Repo = Split-Path -Parent $PSScriptRoot
 if (-not $Target) {
     $Target = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
 }
-$Target = [IO.Path]::GetFullPath($Target)
+# Resolve relative to PowerShell's location, not .NET's current directory.
+$Target = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Target)
 $State = Join-Path $Target '.claude-shit'
 $Manifest = Join-Path $State 'manifest.tsv'
 $Applied = Join-Path $State 'applied-settings.json'
@@ -50,30 +51,26 @@ function Backup-File([string]$Rel) {
     Copy-Item -LiteralPath (Join-Path $Target $Rel) -Destination $dest -Force
 }
 
-# JSON helpers. Windows PowerShell 5.1 has no -AsHashtable, so convert parsed JSON to
-# ordered dictionaries and object[] arrays, which ConvertTo-Json serializes faithfully.
-function ConvertTo-Plain($Value) {
-    if ($null -eq $Value) { return $null }
-    if ($Value -is [System.Management.Automation.PSCustomObject]) {
-        $o = [ordered]@{}
-        foreach ($p in $Value.PSObject.Properties) { $o[$p.Name] = ConvertTo-Plain $p.Value }
-        return $o
-    }
-    if ($Value -is [System.Collections.IList] -and $Value -isnot [string]) {
-        $list = New-Object System.Collections.Generic.List[object]
-        foreach ($item in $Value) { $list.Add((ConvertTo-Plain $item)) }
-        return , $list.ToArray()
-    }
-    return $Value
+# JSON helpers. JavaScriptSerializer parses objects into case-sensitive Dictionary
+# instances (ConvertFrom-Json in Windows PowerShell 5.1 rejects keys that differ only
+# by case, such as http_proxy and HTTP_PROXY) and arrays into object[].
+Add-Type -AssemblyName System.Web.Extensions
+$Serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+$Serializer.MaxJsonLength = [int]::MaxValue
+
+function New-Map { New-Object 'System.Collections.Generic.Dictionary[string,object]' }
+
+function ConvertFrom-JsonText([string]$Text, [string]$Source) {
+    if (-not $Text.Trim()) { return , (New-Map) }
+    try { $parsed = $Serializer.DeserializeObject($Text) }
+    catch { throw "$Source is not valid JSON; fix it before syncing. $($_.Exception.Message)" }
+    if ($parsed -isnot [System.Collections.IDictionary]) { throw "$Source must contain a JSON object." }
+    return , $parsed
 }
 
 function Read-Json([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path)) { return [ordered]@{} }
-    $text = [IO.File]::ReadAllText($Path)
-    if (-not $text.Trim()) { return [ordered]@{} }
-    try { $parsed = $text | ConvertFrom-Json }
-    catch { throw "$Path is not valid JSON; fix it before syncing. $($_.Exception.Message)" }
-    return ConvertTo-Plain $parsed
+    if (-not (Test-Path -LiteralPath $Path)) { return , (New-Map) }
+    return , (ConvertFrom-JsonText ([IO.File]::ReadAllText($Path)) $Path)
 }
 
 function ConvertTo-JsonText($Value, [switch]$Compress) {
@@ -84,22 +81,47 @@ function ConvertTo-JsonText($Value, [switch]$Compress) {
 function Test-IsMap($v) { $v -is [System.Collections.IDictionary] }
 function Test-IsList($v) { $v -is [object[]] }
 
+# Key order doesn't matter for equality (jq's == ignores it too), so compare JSON
+# serialized with keys sorted ordinally.
+function ConvertTo-Canonical($Value) {
+    if (Test-IsMap $Value) {
+        $sorted = New-Object 'System.Collections.Generic.SortedDictionary[string,object]' ([StringComparer]::Ordinal)
+        foreach ($k in $Value.Keys) { $sorted[$k] = ConvertTo-Canonical $Value[$k] }
+        return , $sorted
+    }
+    if (Test-IsList $Value) {
+        $list = New-Object System.Collections.Generic.List[object]
+        foreach ($x in $Value) { $list.Add((ConvertTo-Canonical $x)) }
+        return , $list.ToArray()
+    }
+    return $Value
+}
+
+function Test-JsonEqual($A, $B) {
+    (ConvertTo-JsonText (ConvertTo-Canonical $A) -Compress) -ceq (ConvertTo-JsonText (ConvertTo-Canonical $B) -Compress)
+}
+
 function Test-Contains([object[]]$List, $Item) {
-    $key = ConvertTo-JsonText $Item -Compress
-    foreach ($x in $List) { if ((ConvertTo-JsonText $x -Compress) -eq $key) { return $true } }
+    foreach ($x in $List) { if (Test-JsonEqual $x $Item) { return $true } }
     return $false
 }
 
-# Remove what an earlier sync added ($Prev) that the repo no longer has ($New).
+# Remove what an earlier sync added ($Prev) that the repo no longer has ($New), keeping
+# anything added or changed locally. $New is $null under a key the repo dropped.
 function Get-PrunedJson($Cur, $Prev, $New) {
     if ((Test-IsMap $Cur) -and (Test-IsMap $Prev)) {
         foreach ($k in @($Prev.Keys)) {
-            if ((Test-IsMap $New) -and $New.Contains($k)) {
-                if ($Cur.Contains($k)) { $Cur[$k] = Get-PrunedJson $Cur[$k] $Prev[$k] $New[$k] }
+            if (-not $Cur.ContainsKey($k)) { continue }
+            if ((Test-IsMap $New) -and $New.ContainsKey($k)) {
+                $Cur[$k] = Get-PrunedJson $Cur[$k] $Prev[$k] $New[$k]
+                continue
             }
-            elseif ($Cur.Contains($k)) { $Cur.Remove($k) }
+            $v = Get-PrunedJson $Cur[$k] $Prev[$k] $null
+            $emptied = ((Test-IsMap $v) -and (Test-IsMap $Prev[$k]) -and $v.Count -eq 0) -or
+                       ((Test-IsList $v) -and (Test-IsList $Prev[$k]) -and $v.Count -eq 0)
+            if ($emptied -or (Test-JsonEqual $v $Prev[$k])) { [void]$Cur.Remove($k) } else { $Cur[$k] = $v }
         }
-        return $Cur
+        return , $Cur
     }
     if ((Test-IsList $Cur) -and (Test-IsList $Prev)) {
         $kept = New-Object System.Collections.Generic.List[object]
@@ -114,9 +136,9 @@ function Get-PrunedJson($Cur, $Prev, $New) {
 function Merge-Json($Cur, $New) {
     if ((Test-IsMap $Cur) -and (Test-IsMap $New)) {
         foreach ($k in @($New.Keys)) {
-            if ($Cur.Contains($k)) { $Cur[$k] = Merge-Json $Cur[$k] $New[$k] } else { $Cur[$k] = $New[$k] }
+            if ($Cur.ContainsKey($k)) { $Cur[$k] = Merge-Json $Cur[$k] $New[$k] } else { $Cur[$k] = $New[$k] }
         }
-        return $Cur
+        return , $Cur
     }
     if ((Test-IsList $Cur) -and (Test-IsList $New)) {
         $out = New-Object System.Collections.Generic.List[object]
@@ -201,7 +223,7 @@ foreach ($rel in @($Old.Keys | Sort-Object)) {
 # merge the shared settings in. Objects merge by key, arrays by union, scalars are replaced.
 $hooksPath = $HooksDir -replace '\\', '/'
 $sharedText = [IO.File]::ReadAllText((Join-Path $Repo 'settings\settings.shared.json')).Replace('__CLAUDE_SHIT_HOOKS__', $hooksPath)
-$shared = ConvertTo-Plain ($sharedText | ConvertFrom-Json)
+$shared = ConvertFrom-JsonText $sharedText 'settings\settings.shared.json'
 $settingsPath = Join-Path $Target 'settings.json'
 $current = Read-Json $settingsPath
 $before = ConvertTo-JsonText $current

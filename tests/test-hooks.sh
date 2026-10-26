@@ -96,6 +96,9 @@ out=$(STUB_CTX='we"ird\ctx' kube)
 assert_eq "context with quotes stays valid JSON" 'Active kubectl context: we"ird\ctx.' \
   "$(printf '%s' "$out" | jq -r .hookSpecificOutput.additionalContext | cut -d' ' -f1-4)"
 
+out=$(STUB_CTX="$(printf 'tab\there')" kube)
+assert_contains "context with a tab stays valid JSON" "tab here" "$(printf '%s' "$out" | jq -r .hookSpecificOutput.additionalContext)"
+
 out=$(STUB_FAIL=1 kube); rc=$?
 assert_eq "kube failure still exits 0" 0 "$rc"
 assert_contains "kube failure reported" "current-context is not set" "$(printf '%s' "$out" | jq -r .hookSpecificOutput.additionalContext)"

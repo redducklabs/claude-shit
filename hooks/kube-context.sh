@@ -6,8 +6,8 @@ set -u
 
 cat >/dev/null # hook input is not needed
 
-json_escape() {
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\r\n'
+json_escape() { # newlines and tabs become spaces; other control characters are dropped
+  printf '%s' "$1" | tr '\r\n\t' '   ' | tr -d '\000-\037' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
 if ! command -v kubectl >/dev/null 2>&1; then

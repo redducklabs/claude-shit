@@ -106,6 +106,61 @@ try {
     Assert-True 'force overwrites local edit' (-not $text.Contains('local note'))
     Assert-True 'force installs repo version' ($text.Contains('another rule'))
 
+    # Keys the repo stops shipping: local additions and changes survive, untouched values go
+    $settingsFile = Join-Path $Target 'settings.json'
+    $text = [IO.File]::ReadAllText($settingsFile)
+    $text = $text -replace '"ask":\s*\[', '"ask": ["Bash(rm -rf *)",' -replace '"effortLevel":\s*"xhigh"', '"effortLevel": "medium"'
+    [IO.File]::WriteAllText($settingsFile, $text, $utf8)
+    $shared = [IO.File]::ReadAllText($sharedPath)
+    $shared = $shared -replace '(?s)"ask":\s*\[.*?\],?', '' -replace '"effortLevel":\s*"xhigh",', '' -replace '"outputStyle":\s*"Concise",', ''
+    $shared = $shared -replace '\],(\s*)\}', ']$1}'
+    [IO.File]::WriteAllText($sharedPath, $shared, $utf8)
+    $r = Invoke-Sync
+    Assert-Eq 'dropped-key sync exits 0' 0 $r.Rc
+    $s = Get-Settings
+    Assert-Eq 'local ask entry kept after repo drops ask' '["Bash(rm -rf *)"]' (ConvertTo-Json -InputObject @($s.permissions.ask) -Compress)
+    Assert-Eq 'locally changed scalar kept after repo drops it' 'medium' $s.effortLevel
+    Assert-True 'untouched scalar removed with the repo key' (-not ($s.PSObject.Properties.Name -contains 'outputStyle'))
+
+    # A missing source directory doesn't remove files from the other directories
+    Remove-Item -Recurse -Force -LiteralPath (Join-Path $Repo 'rules'), (Join-Path $Repo 'commands')
+    $r = Invoke-Sync
+    Assert-Eq 'sync without rules/commands exits 0' 0 $r.Rc
+    Assert-True 'hooks kept when rules/ is missing' (Test-Path -LiteralPath (Join-Path $Target 'hooks\claude-shit\secret-scan.sh'))
+    Assert-True 'agents kept when rules/ is missing' (Test-Path -LiteralPath (Join-Path $Target 'agents\core\debugger.md'))
+    Assert-True 'commands removed with their directory' (-not (Test-Path -LiteralPath (Join-Path $Target 'commands\create-pr.md')))
+
+    # Key order inside an array entry doesn't create duplicates
+    $s = Get-Settings
+    $entry = $s.hooks.PreToolUse[0]
+    $reordered = [ordered]@{ hooks = $entry.hooks; matcher = $entry.matcher }
+    $s.hooks.PreToolUse = @($reordered)
+    [IO.File]::WriteAllText($settingsFile, (ConvertTo-Json -InputObject $s -Depth 50), $utf8)
+    $null = Invoke-Sync
+    Assert-Eq 'reordered hook entry not duplicated' 1 @((Get-Settings).hooks.PreToolUse).Count
+
+    # Keys that differ only by case are kept apart
+    $raw = [IO.File]::ReadAllText($settingsFile)
+    $raw = $raw -replace '"env":\s*\{', '"env": {"http_proxy": "http://a", "HTTP_PROXY": "http://b",'
+    [IO.File]::WriteAllText($settingsFile, $raw, $utf8)
+    $r = Invoke-Sync
+    Assert-Eq 'case-differing keys sync' 0 $r.Rc
+    $raw = [IO.File]::ReadAllText($settingsFile)
+    Assert-True 'both case variants kept' ($raw.Contains('"http_proxy"') -and $raw.Contains('"HTTP_PROXY"')) $raw
+
+    # An empty settings.json is treated as {}
+    [IO.File]::WriteAllText($settingsFile, '', $utf8)
+    $r = Invoke-Sync
+    Assert-Eq 'empty settings.json syncs' 0 $r.Rc
+    Assert-Eq 'empty settings.json gets shared keys' '' (Get-Settings).attribution.pr
+
+    # A relative -Target resolves against the current PowerShell location
+    # PowerShell starts the child powershell.exe in the current location.
+    Push-Location -LiteralPath $Tmp
+    try { $r = Invoke-Sync @() 'rel-claude' } finally { Pop-Location }
+    Assert-Eq 'relative target exits 0' 0 $r.Rc
+    Assert-True 'relative target lands under the current location' (Test-Path -LiteralPath (Join-Path $Tmp 'rel-claude\settings.json'))
+
     # Invalid settings.json is left alone
     [IO.File]::WriteAllText((Join-Path $Target 'settings.json'), '{ not json', $utf8)
     $r = Invoke-Sync

@@ -81,6 +81,47 @@ assert_eq "force exits 0" 0 "$rc"
 assert_not_contains "force overwrites local edit" "local note" "$(cat "$target/CLAUDE.md")"
 assert_contains "force installs repo version" "another rule" "$(cat "$target/CLAUDE.md")"
 
+# Keys the repo stops shipping: local additions and changes survive, untouched values go
+jq '.permissions.ask += ["Bash(rm -rf *)"] | .effortLevel = "medium"' "$target/settings.json" >"$TMP_ROOT/s.json" \
+  && mv "$TMP_ROOT/s.json" "$target/settings.json"
+jq 'del(.permissions.ask, .effortLevel, .outputStyle)' "$repo/settings/settings.shared.json" >"$TMP_ROOT/s.json" \
+  && mv "$TMP_ROOT/s.json" "$repo/settings/settings.shared.json"
+out=$(sync 2>&1); rc=$?
+assert_eq "dropped-key sync exits 0" 0 "$rc"
+assert_eq "local ask entry kept after repo drops ask" '["Bash(rm -rf *)"]' "$(settings .permissions.ask)"
+assert_eq "locally changed scalar kept after repo drops it" '"medium"' "$(settings .effortLevel)"
+assert_eq "untouched scalar removed with the repo key" 'null' "$(settings .outputStyle)"
+
+# A missing source directory doesn't remove files from the other directories
+rm -rf "$repo/rules" "$repo/commands"
+out=$(sync 2>&1); rc=$?
+assert_eq "sync without rules/commands exits 0" 0 "$rc"
+assert_file "hooks kept when rules/ is missing" "$target/hooks/claude-shit/secret-scan.sh"
+assert_file "agents kept when rules/ is missing" "$target/agents/core/debugger.md"
+assert_no_file "commands removed with their directory" "$target/commands/create-pr.md"
+
+# Key order inside an array entry doesn't create duplicates
+jq '.hooks.PreToolUse[0] |= (to_entries | reverse | from_entries)' "$target/settings.json" >"$TMP_ROOT/s.json" \
+  && mv "$TMP_ROOT/s.json" "$target/settings.json"
+out=$(sync 2>&1)
+assert_eq "reordered hook entry not duplicated" 1 "$(settings '.hooks.PreToolUse | length')"
+
+# An empty settings.json is treated as {}
+: >"$target/settings.json"
+out=$(sync 2>&1); rc=$?
+assert_eq "empty settings.json syncs" 0 "$rc"
+assert_eq "empty settings.json gets shared keys" '{"commit":"","pr":""}' "$(settings .attribution)"
+
+# A relative --target still writes absolute hook paths
+rel_target=rel-claude
+out=$(cd "$TMP_ROOT" && bash "$repo/install/sync.sh" --target "$rel_target" 2>&1); rc=$?
+assert_eq "relative target exits 0" 0 "$rc"
+rel_cmd=$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$TMP_ROOT/$rel_target/settings.json")
+case $rel_cmd in
+  'bash "/'* | 'bash "'[A-Za-z]:/*) pass "relative target gives absolute hook path" ;;
+  *) fail "relative target gives absolute hook path" "$rel_cmd" ;;
+esac
+
 # Invalid settings.json is left alone
 printf '{ not json' >"$target/settings.json"
 out=$(sync 2>&1); rc=$?
