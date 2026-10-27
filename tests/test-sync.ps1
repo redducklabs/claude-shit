@@ -169,8 +169,9 @@ try {
 
     # Parity: both implementations produce the same settings from the same input
     $bash = Get-Command bash -ErrorAction SilentlyContinue
-    $jq = Get-Command jq -ErrorAction SilentlyContinue
-    if ($bash -and $jq) {
+    $hasJq = $false
+    if ($bash) { $null = '' | & bash -c 'command -v jq' 2>&1; $hasJq = ($LASTEXITCODE -eq 0) }
+    if ($bash -and $hasJq) {
         $a = Join-Path $Tmp 'parity-ps'
         $b = Join-Path $Tmp 'parity-sh'
         foreach ($t in $a, $b) {
@@ -178,13 +179,22 @@ try {
             [IO.File]::WriteAllText((Join-Path $t 'settings.json'), $initialSettings, $utf8)
         }
         $null = Invoke-Sync @() $a
-        $shTarget = (& bash -c 'cygpath -u "$1"' _ $b).Trim()
-        $shScript = (& bash -c 'cygpath -u "$1"' _ (Join-Path $Repo 'install\sync.sh')).Trim()
+        # Git Bash accepts C:/ paths. Empty stdin: a bash started from PowerShell inside
+        # another Git Bash can otherwise block waiting on the inherited console.
+        $shTarget = $b -replace '\\', '/'
+        $shScript = (Join-Path $Repo 'install\sync.sh') -replace '\\', '/'
         $ErrorActionPreference = 'Continue'
-        $null = & bash $shScript --target $shTarget 2>&1
+        $null = '' | & bash $shScript --target $shTarget 2>&1
         $ErrorActionPreference = 'Stop'
-        $canon = { param($p) (& jq -S -c . $p) -join '' }
-        Assert-Eq 'sync.ps1 and sync.sh produce identical settings' (& $canon (Join-Path $b 'settings.json')) (& $canon (Join-Path $a 'settings.json'))
+        # Each target embeds its own path in the hook commands; normalize that part.
+        # Run jq through bash: it finds the same jq sync.sh uses, including one installed
+        # without an .exe extension, which PowerShell can't start directly.
+        $canon = { param($p) (('' | & bash -c 'jq -S -c . "$1"' _ ($p -replace '\\', '/')) -join '') -replace 'parity-(ps|sh)', 'parity-X' }
+        $fromSh = & $canon (Join-Path $b 'settings.json')
+        $fromPs = & $canon (Join-Path $a 'settings.json')
+        Assert-True 'parity outputs are non-empty JSON' ($fromSh.StartsWith('{') -and $fromPs.StartsWith('{')) "sh=[$fromSh] ps=[$fromPs]"
+        Assert-True 'parity output contains the shared hooks' ($fromSh.Contains('parity-X/hooks/claude-shit/secret-scan.sh')) $fromSh
+        Assert-Eq 'sync.ps1 and sync.sh produce identical settings' $fromSh $fromPs
     }
     else {
         Write-Output 'skip  parity check (bash or jq not found)'
