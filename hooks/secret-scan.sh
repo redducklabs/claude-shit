@@ -3,8 +3,9 @@
 # Scans the staged and unstaged changes to tracked files with gitleaks and blocks the
 # call (exit 2) when it finds a secret, when gitleaks is missing, or when the scan fails.
 # Claude Code also runs `if`-filtered hooks for commands it can't fully parse (variable
-# expansions, for example), so the hook checks for `git ... commit` itself and lets
-# anything else through.
+# expansions, for example), so the hook lets through commands that don't contain the
+# word "commit" at all and scans everything else. Git aliases for commit (`git ci`)
+# are not detected.
 # The hook runs before the whole Bash command, so a `git add` chained in the same
 # command hasn't staged anything yet; such commands are blocked with a request to
 # stage first and commit in a separate command.
@@ -20,10 +21,15 @@ json_field() {
   printf '%s' "$input" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\(\([^\"\\\\]\|\\\\.\)*\)\".*/\1/p" | head -n 1
 }
 
-cmd=$(json_field command)
-if ! printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_.-])git([[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|\\|$)'; then
-  exit 0
-fi
+# Decode the JSON escapes that matter for matching: \n, \r, \t become spaces (a line
+# continuation or tab can separate git from commit), \" and \\ become " and \.
+cmd=$(json_field command | sed -e 's/\\[nrt]/ /g' -e 's/\\"/"/g' -e 's/\\\\/\\/g')
+# Fail closed: scan whenever "commit" appears anywhere, rather than trying to recognize
+# every way of writing a git commit (options, aliases aside, quoting, continuations).
+case $cmd in
+  *commit*) ;;
+  *) exit 0 ;;
+esac
 
 # Run in the session's working directory. Collapse the doubled backslashes of
 # escaped Windows paths (C:\\Users\\...).

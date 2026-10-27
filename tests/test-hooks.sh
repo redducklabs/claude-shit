@@ -62,6 +62,15 @@ assert_eq "git log passes through" 0 "$rc"
 STUB_RC=0 scan 'git -C sub commit -m x'
 assert_eq "git -C dir commit is scanned" 2 "$ncalls"
 
+STUB_RC=0 scan 'git \\\ncommit -m x'
+assert_eq "line-continued git commit is scanned" 2 "$ncalls"
+
+STUB_RC=0 scan 'git\tcommit -m x'
+assert_eq "tab-separated git commit is scanned" 2 "$ncalls"
+
+STUB_RC=3 scan 'echo commit'
+assert_eq "any command mentioning commit is scanned (fail closed)" 2 "$rc"
+
 export STUB_RC=3
 scan 'git commit -m \"x\"'
 assert_eq "leak blocks commit" 2 "$rc"
