@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-# Claude Code PreToolUse hook, run for Bash calls matching `kubectl *` or `helm *`.
-# Adds the active kubectl context to Claude's context so it can confirm the
-# command targets the intended cluster. Never blocks the call.
+# Claude Code PreToolUse hook for Bash calls, configured twice: with
+# `if: "Bash(kubectl *)"` and argument `kubectl`, and with `if: "Bash(helm *)"` and
+# argument `helm`. Adds the active kubectl context to Claude's context so it can
+# confirm the command targets the intended cluster. Never blocks the call.
+# Claude Code also runs `if`-filtered hooks for commands it can't fully parse, so the
+# hook checks that the command really runs the tool named in its argument.
 set -u
 
-cat >/dev/null # hook input is not needed
+tool=${1:-kubectl}
+input=$(cat)
+cmd=$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\(\([^"\\]\|\\.\)*\)".*/\1/p' | head -n 1)
+if ! printf '%s' "$cmd" | grep -Eq "(^|[^[:alnum:]_.-])${tool}([[:space:]]|\\\\|\$)"; then
+  exit 0
+fi
 
 json_escape() { # newlines and tabs become spaces; other control characters are dropped
   printf '%s' "$1" | tr '\r\n\t' '   ' | tr -d '\000-\037' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
