@@ -38,7 +38,7 @@ function Invoke-Sync([string[]]$Extra = @(), [string]$To = $Target) {
     $out = & powershell.exe @argList 2>&1 | Out-String
     return @{ Out = $out; Rc = $LASTEXITCODE }
 }
-function Get-Settings { [IO.File]::ReadAllText((Join-Path $Target 'settings.json')) | ConvertFrom-Json }
+function Read-SettingsFile { [IO.File]::ReadAllText((Join-Path $Target 'settings.json')) | ConvertFrom-Json }
 
 try {
     # Fresh install
@@ -47,7 +47,7 @@ try {
     foreach ($f in 'CLAUDE.md', 'rules\github-actions.md', 'commands\create-pr.md', 'hooks\claude-shit\secret-scan.sh', 'agents\core\debugger.md', '.claude-shit\manifest.tsv') {
         Assert-True "installed $f" (Test-Path -LiteralPath (Join-Path $Target $f))
     }
-    $s = Get-Settings
+    $s = Read-SettingsFile
     Assert-Eq 'local scalar kept' "status.ps1 'quoted'" $s.statusLine.command
     Assert-Eq 'shared scalar replaces local' 'xhigh' $s.effortLevel
     Assert-True 'local deny entry kept' ($s.permissions.deny -contains 'Bash(rm -rf *)')
@@ -65,7 +65,7 @@ try {
     $r = Invoke-Sync
     Assert-Eq 'rerun exits 0' 0 $r.Rc
     Assert-True 'rerun reports up to date' ($r.Out -match 'Up to date\.') $r.Out
-    Assert-Eq 'rerun adds no duplicate hooks' 1 @((Get-Settings).hooks.PreToolUse).Count
+    Assert-Eq 'rerun adds no duplicate hooks' 1 @((Read-SettingsFile).hooks.PreToolUse).Count
 
     # -Check writes nothing and exits 1 when out of date
     Add-Content -LiteralPath (Join-Path $Repo 'claude_md\CLAUDE.md') -Value '- extra rule'
@@ -89,7 +89,7 @@ try {
     $r = Invoke-Sync
     Assert-Eq 'removal sync exits 0' 0 $r.Rc
     Assert-True 'removed rule deleted' (-not (Test-Path -LiteralPath (Join-Path $Target 'rules\github-actions.md')))
-    $s = Get-Settings
+    $s = Read-SettingsFile
     Assert-True 'removed deny entry dropped' (-not ($s.permissions.deny -contains 'Bash(helm install *)'))
     Assert-True 'local deny entry survives removal' ($s.permissions.deny -contains 'Bash(rm -rf *)')
 
@@ -117,7 +117,7 @@ try {
     [IO.File]::WriteAllText($sharedPath, $shared, $utf8)
     $r = Invoke-Sync
     Assert-Eq 'dropped-key sync exits 0' 0 $r.Rc
-    $s = Get-Settings
+    $s = Read-SettingsFile
     Assert-Eq 'local ask entry kept after repo drops ask' '["Bash(rm -rf *)"]' (ConvertTo-Json -InputObject @($s.permissions.ask) -Compress)
     Assert-Eq 'locally changed scalar kept after repo drops it' 'medium' $s.effortLevel
     Assert-True 'untouched scalar removed with the repo key' (-not ($s.PSObject.Properties.Name -contains 'outputStyle'))
@@ -131,13 +131,13 @@ try {
     Assert-True 'commands removed with their directory' (-not (Test-Path -LiteralPath (Join-Path $Target 'commands\create-pr.md')))
 
     # Key order inside an array entry doesn't create duplicates
-    $s = Get-Settings
+    $s = Read-SettingsFile
     $entry = $s.hooks.PreToolUse[0]
     $reordered = [ordered]@{ hooks = $entry.hooks; matcher = $entry.matcher }
     $s.hooks.PreToolUse = @($reordered)
     [IO.File]::WriteAllText($settingsFile, (ConvertTo-Json -InputObject $s -Depth 50), $utf8)
     $null = Invoke-Sync
-    Assert-Eq 'reordered hook entry not duplicated' 1 @((Get-Settings).hooks.PreToolUse).Count
+    Assert-Eq 'reordered hook entry not duplicated' 1 @((Read-SettingsFile).hooks.PreToolUse).Count
 
     # Keys that differ only by case are kept apart
     $raw = [IO.File]::ReadAllText($settingsFile)
@@ -152,7 +152,7 @@ try {
     [IO.File]::WriteAllText($settingsFile, '', $utf8)
     $r = Invoke-Sync
     Assert-Eq 'empty settings.json syncs' 0 $r.Rc
-    Assert-Eq 'empty settings.json gets shared keys' '' (Get-Settings).attribution.pr
+    Assert-Eq 'empty settings.json gets shared keys' '' (Read-SettingsFile).attribution.pr
 
     # A relative -Target resolves against the current PowerShell location
     # PowerShell starts the child powershell.exe in the current location.

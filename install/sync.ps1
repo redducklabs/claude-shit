@@ -58,10 +58,10 @@ Add-Type -AssemblyName System.Web.Extensions
 $Serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
 $Serializer.MaxJsonLength = [int]::MaxValue
 
-function New-Map { New-Object 'System.Collections.Generic.Dictionary[string,object]' }
+function Get-EmptyMap { New-Object 'System.Collections.Generic.Dictionary[string,object]' }
 
 function ConvertFrom-JsonText([string]$Text, [string]$Source) {
-    if (-not $Text.Trim()) { return , (New-Map) }
+    if (-not $Text.Trim()) { return , (Get-EmptyMap) }
     try { $parsed = $Serializer.DeserializeObject($Text) }
     catch { throw "$Source is not valid JSON; fix it before syncing. $($_.Exception.Message)" }
     if ($parsed -isnot [System.Collections.IDictionary]) { throw "$Source must contain a JSON object." }
@@ -69,7 +69,7 @@ function ConvertFrom-JsonText([string]$Text, [string]$Source) {
 }
 
 function Read-Json([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path)) { return , (New-Map) }
+    if (-not (Test-Path -LiteralPath $Path)) { return , (Get-EmptyMap) }
     return , (ConvertFrom-JsonText ([IO.File]::ReadAllText($Path)) $Path)
 }
 
@@ -101,7 +101,7 @@ function Test-JsonEqual($A, $B) {
     (ConvertTo-JsonText (ConvertTo-Canonical $A) -Compress) -ceq (ConvertTo-JsonText (ConvertTo-Canonical $B) -Compress)
 }
 
-function Test-Contains([object[]]$List, $Item) {
+function Test-ListHasItem([object[]]$List, $Item) {
     foreach ($x in $List) { if (Test-JsonEqual $x $Item) { return $true } }
     return $false
 }
@@ -126,7 +126,7 @@ function Get-PrunedJson($Cur, $Prev, $New) {
     if ((Test-IsList $Cur) -and (Test-IsList $Prev)) {
         $kept = New-Object System.Collections.Generic.List[object]
         foreach ($x in $Cur) {
-            if (-not (Test-Contains $Prev $x) -or ((Test-IsList $New) -and (Test-Contains $New $x))) { $kept.Add($x) }
+            if (-not (Test-ListHasItem $Prev $x) -or ((Test-IsList $New) -and (Test-ListHasItem $New $x))) { $kept.Add($x) }
         }
         return , $kept.ToArray()
     }
@@ -143,7 +143,7 @@ function Merge-Json($Cur, $New) {
     if ((Test-IsList $Cur) -and (Test-IsList $New)) {
         $out = New-Object System.Collections.Generic.List[object]
         foreach ($x in $Cur) { $out.Add($x) }
-        foreach ($x in $New) { if (-not (Test-Contains $out.ToArray() $x)) { $out.Add($x) } }
+        foreach ($x in $New) { if (-not (Test-ListHasItem $out.ToArray() $x)) { $out.Add($x) } }
         return , $out.ToArray()
     }
     return , $New
