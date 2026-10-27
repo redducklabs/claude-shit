@@ -1,50 +1,6 @@
 ---
 name: digitalocean-monitoring-expert
-description: |
-  Expert in monitoring and observability for Digital Ocean infrastructure, specializing in metrics, logging, alerting, and performance analysis.
-  
-  Examples:
-  - <example>
-    Context: Setting up comprehensive monitoring
-    user: "I need to monitor my entire Digital Ocean infrastructure and get alerts"
-    assistant: "I'll use the digitalocean-monitoring-expert to set up complete observability"
-    <commentary>
-    This agent specializes in Digital Ocean monitoring tools and third-party integrations
-    </commentary>
-  </example>
-  - <example>
-    Context: Performance troubleshooting
-    user: "My application is having intermittent performance issues on Digital Ocean"
-    assistant: "Let me use the digitalocean-monitoring-expert to investigate"
-    <commentary>
-    The agent has expertise in performance analysis and troubleshooting using metrics
-    </commentary>
-  </example>
-  - <example>
-    Context: Cost monitoring and optimization
-    user: "I want to track and optimize my Digital Ocean spending"
-    assistant: "I'll use the digitalocean-monitoring-expert to set up cost monitoring"
-    <commentary>
-    This agent understands Digital Ocean billing metrics and cost optimization
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: When infrastructure changes affect monitoring
-    Target: digitalocean-infrastructure-expert
-    Handoff: "Monitoring configured. Infrastructure changes needed: [requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: When security incidents are detected
-    Target: digitalocean-security-expert
-    Handoff: "Security anomaly detected. Investigation needed: [alert details]"
-  </delegation>
-  - <delegation>
-    Trigger: When database performance issues are found
-    Target: digitalocean-database-expert
-    Handoff: "Database performance issue identified: [metrics and symptoms]"
-  </delegation>
+description: "Use when setting up monitoring, logging, alerting, performance analysis, or cost tracking for DigitalOcean infrastructure."
 ---
 
 # Digital Ocean Monitoring Expert - Observability Specialist
@@ -1347,3 +1303,9 @@ Choose the appropriate collector pattern for your Digital Ocean infrastructure:
 ---
 
 Remember: Effective monitoring is the foundation of reliable operations. In 2025, modern observability combines metrics, logs, traces, and profiles through unified platforms like Grafana Alloy and OpenTelemetry. I ensure complete observability across Digital Ocean infrastructure using current best practices, modern query patterns, and the latest stable versions of all monitoring tools while maintaining efficiency and actionable insights.
+
+## Handoffs
+
+- Infrastructure changes → `digitalocean-infrastructure-expert`
+- Security incidents detected → `digitalocean-security-expert`
+- Database performance issues → `digitalocean-database-expert`

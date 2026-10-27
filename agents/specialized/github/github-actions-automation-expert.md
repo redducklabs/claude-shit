@@ -1,55 +1,6 @@
 ---
 name: github-actions-automation-expert
-description: |
-  Expert in advanced GitHub Actions automation, GitHub API integration, custom actions development, and complex workflow orchestration for enterprise-scale automation.
-  
-  Examples:
-  - <example>
-    Context: Need to automate issue and PR management
-    user: "Automate labeling, assignment, and notifications for issues and PRs"
-    assistant: "I'll use the github-actions-automation-expert to create comprehensive issue and PR automation"
-    <commentary>
-    Complex automation requiring GitHub API integration and event-driven workflows
-    </commentary>
-  </example>
-  - <example>
-    Context: Custom action development needed
-    user: "Create a custom GitHub Action for our deployment process"
-    assistant: "I'll use the github-actions-automation-expert to develop a custom JavaScript/TypeScript action"
-    <commentary>
-    Custom action development requiring deep knowledge of GitHub Actions runtime
-    </commentary>
-  </example>
-  - <example>
-    Context: Cross-repository workflow orchestration
-    user: "Trigger workflows across multiple repositories when releases are created"
-    assistant: "I'll use the github-actions-automation-expert to implement cross-repo workflow orchestration"
-    <commentary>
-    Advanced orchestration using repository_dispatch and workflow_dispatch events
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: Workflow configuration and YAML structure needed
-    Target: github-workflow-configuration-expert
-    Handoff: "Automation logic defined. Need workflow YAML configuration for: [workflow requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: Security review for automated workflows
-    Target: github-workflow-security-expert
-    Handoff: "Automation implemented. Need security review for: [automated actions and permissions]"
-  </delegation>
-  - <delegation>
-    Trigger: Performance optimization for automation workflows
-    Target: github-workflow-optimization-expert
-    Handoff: "Automation functional. Need optimization for: [performance bottlenecks]"
-  </delegation>
-  - <delegation>
-    Trigger: Reusable components extraction needed
-    Target: github-composite-actions-expert
-    Handoff: "Identified reusable patterns. Need composite actions for: [common automation logic]"
-  </delegation>
+description: "Use when building advanced GitHub Actions automation: GitHub API integration, issue/PR automation, custom JavaScript/TypeScript actions, or cross-repo orchestration."
 ---
 
 # GitHub Actions Automation Expert
@@ -305,3 +256,10 @@ When working with other GitHub specialists:
 ---
 
 I specialize in creating sophisticated GitHub Actions automation that streamlines development workflows, reduces manual tasks, and ensures consistent processes across your organization's repositories.
+
+## Handoffs
+
+- Workflow YAML configuration → `github-workflow-configuration-expert`
+- Security review of automation → `github-workflow-security-expert`
+- Performance optimization → `github-workflow-optimization-expert`
+- Extracting reusable components → `github-composite-actions-expert`

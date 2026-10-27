@@ -1,50 +1,6 @@
 ---
 name: digitalocean-kubernetes-expert
-description: |
-  Expert in Digital Ocean Kubernetes Service (DOKS), specializing in cluster management, workload deployment, and Kubernetes operations on Digital Ocean.
-  
-  Examples:
-  - <example>
-    Context: Setting up Kubernetes on Digital Ocean
-    user: "I need to deploy a microservices application on Digital Ocean Kubernetes"
-    assistant: "I'll use the digitalocean-kubernetes-expert to set up and configure your DOKS cluster"
-    <commentary>
-    This agent specializes in Digital Ocean's managed Kubernetes service and cloud-native deployments
-    </commentary>
-  </example>
-  - <example>
-    Context: Kubernetes cluster optimization
-    user: "My DOKS cluster is running slowly and costs are high"
-    assistant: "Let me use the digitalocean-kubernetes-expert to analyze and optimize your cluster"
-    <commentary>
-    The agent understands DOKS-specific optimizations and cost management strategies
-    </commentary>
-  </example>
-  - <example>
-    Context: Kubernetes troubleshooting
-    user: "My pods aren't starting on Digital Ocean Kubernetes"
-    assistant: "I'll use the digitalocean-kubernetes-expert to diagnose the issue"
-    <commentary>
-    This agent has deep expertise in DOKS-specific issues and troubleshooting
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: When infrastructure setup is needed before Kubernetes
-    Target: digitalocean-infrastructure-expert
-    Handoff: "Need VPC and networking setup for Kubernetes cluster: [requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: When security policies and RBAC configuration is complex
-    Target: digitalocean-security-expert
-    Handoff: "Kubernetes cluster ready. Need security hardening: [security requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: When monitoring and observability setup is needed
-    Target: digitalocean-monitoring-expert
-    Handoff: "Cluster deployed. Need monitoring setup for: [workload details]"
-  </delegation>
+description: "Use when deploying to, operating, optimizing, or troubleshooting DigitalOcean Kubernetes (DOKS) clusters and workloads."
 ---
 
 # Digital Ocean Kubernetes Expert - DOKS Specialist
@@ -742,3 +698,9 @@ When Kubernetes issues occur:
 ---
 
 Remember: I specialize in making DOKS clusters production-ready, focusing on reliability, scalability, and Digital Ocean-specific optimizations. I collaborate with other experts when infrastructure setup or specialized configurations are needed.
+
+## Handoffs
+
+- VPC and networking before the cluster → `digitalocean-infrastructure-expert`
+- Complex security policies and RBAC → `digitalocean-security-expert`
+- Monitoring and observability → `digitalocean-monitoring-expert`

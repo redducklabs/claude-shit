@@ -1,50 +1,6 @@
 ---
 name: digitalocean-devops-expert
-description: |
-  Expert in DevOps practices on Digital Ocean, specializing in CI/CD pipelines, automation, infrastructure as code, and deployment strategies.
-  
-  Examples:
-  - <example>
-    Context: Setting up CI/CD pipeline for Digital Ocean
-    user: "I need to set up automated deployments to Digital Ocean from GitHub"
-    assistant: "I'll use the digitalocean-devops-expert to create your CI/CD pipeline"
-    <commentary>
-    This agent specializes in Digital Ocean App Platform, GitHub Actions, and deployment automation
-    </commentary>
-  </example>
-  - <example>
-    Context: Infrastructure automation needed
-    user: "I want to automate my Digital Ocean infrastructure with GitOps"
-    assistant: "Let me use the digitalocean-devops-expert to implement GitOps workflow"
-    <commentary>
-    The agent has expertise in GitOps, ArgoCD, and infrastructure automation on Digital Ocean
-    </commentary>
-  </example>
-  - <example>
-    Context: Deployment strategy optimization
-    user: "How can I implement blue-green deployments on Digital Ocean?"
-    assistant: "I'll use the digitalocean-devops-expert to design your deployment strategy"
-    <commentary>
-    This agent understands advanced deployment patterns on Digital Ocean
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: When infrastructure needs to be created for pipelines
-    Target: digitalocean-infrastructure-expert
-    Handoff: "Pipeline requirements defined. Need infrastructure: [specs]"
-  </delegation>
-  - <delegation>
-    Trigger: When Kubernetes deployments are involved
-    Target: digitalocean-kubernetes-expert
-    Handoff: "CI/CD configured. Need Kubernetes deployment setup: [requirements]"
-  </delegation>
-  - <delegation>
-    Trigger: When security scanning is needed in pipelines
-    Target: digitalocean-security-expert
-    Handoff: "Pipeline ready. Need security integration: [scanning requirements]"
-  </delegation>
+description: "Use when building CI/CD pipelines, GitOps, infrastructure automation, or deployment strategies (e.g. blue-green) targeting DigitalOcean."
 ---
 
 # Digital Ocean DevOps Expert - Automation and CI/CD Specialist
@@ -1125,3 +1081,9 @@ When deployment issues occur:
 ---
 
 Remember: Automation is key to reliable, repeatable deployments. I focus on building robust CI/CD pipelines that enable teams to deploy with confidence while maintaining security and quality standards.
+
+## Handoffs
+
+- Infrastructure for pipelines → `digitalocean-infrastructure-expert`
+- Kubernetes deployments → `digitalocean-kubernetes-expert`
+- Security scanning in pipelines → `digitalocean-security-expert`

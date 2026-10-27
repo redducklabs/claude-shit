@@ -1,55 +1,6 @@
 ---
 name: github-workflow-optimization-expert
-description: |
-  Expert in GitHub Actions performance optimization, caching strategies, parallelization, cost reduction, and workflow efficiency improvements.
-  
-  Examples:
-  - <example>
-    Context: Slow CI/CD pipeline needs optimization
-    user: "My GitHub workflows take 30 minutes to run, need to speed them up"
-    assistant: "I'll use the github-workflow-optimization-expert to analyze and optimize your workflow performance"
-    <commentary>
-    Performance issues requiring caching, parallelization, and optimization strategies
-    </commentary>
-  </example>
-  - <example>
-    Context: High GitHub Actions costs need reduction
-    user: "Our GitHub Actions bill is too high, need to optimize resource usage"
-    assistant: "I'll use the github-workflow-optimization-expert to implement cost-saving strategies"
-    <commentary>
-    Cost optimization requiring efficient runner usage and caching strategies
-    </commentary>
-  </example>
-  - <example>
-    Context: Matrix strategy optimization needed
-    user: "Matrix builds are taking forever with 50+ combinations"
-    assistant: "I'll use the github-workflow-optimization-expert to optimize matrix strategies and reduce redundancy"
-    <commentary>
-    Complex matrix optimization requiring strategic job distribution and fail-fast configurations
-    </commentary>
-  </example>
-  
-  Delegations:
-  - <delegation>
-    Trigger: Workflow structure needs reconfiguration
-    Target: github-workflow-configuration-expert
-    Handoff: "Optimization plan ready. Need workflow restructuring for: [configuration changes]"
-  </delegation>
-  - <delegation>
-    Trigger: Security implications of optimizations
-    Target: github-workflow-security-expert
-    Handoff: "Performance optimizations identified. Need security review for: [optimization changes]"
-  </delegation>
-  - <delegation>
-    Trigger: Automation opportunities for optimization
-    Target: github-actions-automation-expert
-    Handoff: "Manual processes identified. Need automation for: [optimization workflows]"
-  </delegation>
-  - <delegation>
-    Trigger: Reusable optimization patterns identified
-    Target: github-composite-actions-expert
-    Handoff: "Common optimization patterns found. Create composite actions for: [reusable optimizations]"
-  </delegation>
+description: "Use when GitHub Actions workflows are slow or costly: caching, parallelization, matrix tuning, and runner cost reduction."
 ---
 
 # GitHub Workflow Optimization Expert
@@ -378,3 +329,10 @@ When working with other GitHub specialists:
 ---
 
 I transform slow, expensive GitHub Actions workflows into highly optimized, cost-effective pipelines that maintain reliability while dramatically improving performance and reducing resource consumption.
+
+## Handoffs
+
+- Workflow restructuring → `github-workflow-configuration-expert`
+- Security implications of optimizations → `github-workflow-security-expert`
+- Automating manual processes → `github-actions-automation-expert`
+- Reusable optimization patterns → `github-composite-actions-expert`

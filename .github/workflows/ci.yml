@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux (sync.sh, hooks, lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate JSON
+        run: jq empty settings/settings.shared.json
+      - name: ShellCheck
+        run: shellcheck -x -P SCRIPTDIR install/sync.sh hooks/*.sh tests/*.sh
+      - name: Sync tests
+        run: bash tests/test-sync.sh
+      - name: Hook tests
+        run: bash tests/test-hooks.sh
+
+  windows:
+    name: Windows (sync.ps1, hooks under Git Bash)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: PSScriptAnalyzer
+        shell: powershell
+        run: |
+          $results = 'install/sync.ps1', 'tests/test-sync.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error, Warning }
+          $results | Format-Table -AutoSize | Out-String | Write-Output
+          if ($results) { exit 1 }
+      - name: Sync tests (sync.ps1, plus parity with sync.sh)
+        shell: powershell
+        run: ./tests/test-sync.ps1
+      - name: Sync tests (sync.sh under Git Bash)
+        shell: bash
+        run: bash tests/test-sync.sh
+      - name: Hook tests under Git Bash
+        shell: bash
+        run: bash tests/test-hooks.sh
