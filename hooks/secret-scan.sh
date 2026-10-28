@@ -9,6 +9,8 @@
 # The hook runs before the whole Bash command, so a `git add` chained in the same
 # command hasn't staged anything yet; such commands are blocked with a request to
 # stage first and commit in a separate command.
+# When it blocks, it prints a short summary (at most 10 findings, under 4 KB) and keeps
+# the full redacted gitleaks report in a per-run temp folder for the agent to inspect.
 # Limitation: it scans the repository in the session's working directory, so a
 # `git -C <dir> commit` or `cd <dir> && git commit` into another repo is not covered.
 set -u
@@ -73,19 +75,52 @@ if ! gitleaks_bin=$(find_gitleaks); then
   exit 2
 fi
 
-# Leaks exit with 3 so they can be told apart from gitleaks' own errors (exit 1).
-scan() {
-  "$gitleaks_bin" git --pre-commit "$@" --redact --no-banner --no-color --verbose --exit-code 3 2>&1
+# Hook output goes into the agent's context, so every message is capped: a merge can
+# stage thousands of files, and an unbounded gitleaks log once overflowed a session in
+# a single tool result.
+max_findings=10
+max_line=300
+max_bytes=4000
+show_path() { # a path the agent's file tools can open; Windows form under Git Bash
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s\n' "$1"; fi
+}
+block() { # block <message>: print at most max_bytes and exit 2
+  printf '%s\n' "$1" | head -c "$max_bytes" >&2
+  exit 2
 }
 
-report() {
-  local label=$1 out=$2 rc=$3
+# Leaks exit with 3 so they can be told apart from gitleaks' own errors (exit 1).
+scan() { # scan <label> [gitleaks args]: report in $report_dir/<label>.json, log in <label>.log
+  local label=$1
+  shift
+  "$gitleaks_bin" git --pre-commit "$@" --redact --no-banner --no-color --exit-code 3 \
+    --report-format json --report-path "$report_dir/$label.json" >"$report_dir/$label.log" 2>&1
+}
+
+# findings <report>: one "File:Line  RuleID  Fingerprint" line per finding. Reads gitleaks'
+# pretty-printed JSON line by line (one key per line, Fingerprint last), so no jq is needed.
+findings() {
+  awk '
+    function val(s) { sub(/^[^:]*:[[:space:]]*"?/, "", s); sub(/"?,?[[:space:]]*$/, "", s); return s }
+    /^[[:space:]]*"RuleID":/ { rule = val($0) }
+    /^[[:space:]]*"StartLine":/ { line = val($0) }
+    /^[[:space:]]*"File":/ { file = val($0) }
+    /^[[:space:]]*"Fingerprint":/ { print file ":" line "  " rule "  " val($0) }
+  ' "$1"
+}
+
+report() { # report <label> <gitleaks exit code>
+  local label=$1 rc=$2 json=$report_dir/$1.json log=$report_dir/$1.log total more=""
   if [ "$rc" -eq 3 ]; then
-    printf 'Blocked: gitleaks found secrets in the %s changes. Remove them (and rotate any real credential) before committing.\n%s\n' "$label" "$out" >&2
-    exit 2
+    total=$(findings "$json" | wc -l | tr -d ' ')
+    if [ "$total" -gt "$max_findings" ]; then
+      more=$(printf '\n...and %s more' "$((total - max_findings))")
+    fi
+    block "$(printf 'Blocked: gitleaks found %s secret(s) in the %s changes. Remove them (and rotate any real credential) before committing.\nFull redacted report, to inspect (for example with jq) instead of re-running the scan: %s\n%s%s' \
+      "$total" "$label" "$(show_path "$json")" "$(findings "$json" | head -n "$max_findings" | cut -c "1-$max_line")" "$more")"
   elif [ "$rc" -ne 0 ]; then
-    printf 'Blocked: the gitleaks scan of the %s changes failed (exit %s), so the commit was not verified.\n%s\n' "$label" "$rc" "$out" >&2
-    exit 2
+    block "$(printf 'Blocked: the gitleaks scan of the %s changes failed (exit %s), so the commit was not verified.\nFull output: %s\nLast lines:\n%s' \
+      "$label" "$rc" "$(show_path "$log")" "$(tail -n "$max_findings" "$log" | cut -c "1-$max_line")")"
   fi
 }
 
@@ -94,11 +129,14 @@ if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+([^[:space:]"]+[[:space:]]+){0,
   exit 2
 fi
 
-out=$(scan --staged); rc=$?
-report staged "$out" "$rc"
+report_dir=$(mktemp -d "${TMPDIR:-/tmp}/secret-scan.XXXXXXXX") || {
+  echo "Blocked: could not create a temp folder for the gitleaks report, so the commit was not verified." >&2
+  exit 2
+}
+scan staged --staged; report staged $?
 
 # Unstaged changes to tracked files: `git commit -a`, `--all`, or a pathspec commits them too.
-out=$(scan); rc=$?
-report unstaged "$out" "$rc"
+scan unstaged; report unstaged $?
 
+rm -rf "$report_dir"
 exit 0
