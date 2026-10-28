@@ -192,9 +192,12 @@ if [ $CHECK -eq 0 ]; then
   [ -d "$BACKUP" ] && say "Backups of replaced files: $BACKUP"
 fi
 
-for tool in gitleaks kubectl; do
-  command -v "$tool" >/dev/null 2>&1 || say "WARN    $tool not found. $([ "$tool" = gitleaks ] && echo 'The secret-scan hook blocks every git commit until it is installed.' || echo 'The kube-context hook will report it missing.')"
-done
+# Same places the secret-scan hook looks for gitleaks besides PATH.
+if ! command -v gitleaks >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/gitleaks" ] \
+  && [ ! -x /usr/local/bin/gitleaks ] && [ ! -x /home/linuxbrew/.linuxbrew/bin/gitleaks ]; then
+  say "WARN    gitleaks not found. The secret-scan hook blocks every git commit until it is installed."
+fi
+command -v kubectl >/dev/null 2>&1 || say "WARN    kubectl not found. The kube-context hook will report it missing."
 
 if [ $PENDING -eq 0 ] && [ $DRIFT -eq 0 ]; then
   say "Up to date."

@@ -255,7 +255,13 @@ if (-not $Check) {
     if (Test-Path -LiteralPath $Backup) { Write-Output "Backups of replaced files: $Backup" }
 }
 
-if (-not (Get-Command gitleaks -ErrorAction SilentlyContinue)) {
+# Same places the secret-scan hook looks: PATH, then winget's folders (a running app
+# keeps its old PATH, so a fresh install may only be found there).
+$wingetGitleaks = @()
+if ($env:LOCALAPPDATA) {
+    $wingetGitleaks = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\gitleaks.exe'), (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\Gitleaks.Gitleaks_*\gitleaks.exe') -ErrorAction SilentlyContinue)
+}
+if (-not (Get-Command gitleaks -ErrorAction SilentlyContinue) -and $wingetGitleaks.Count -eq 0) {
     Write-Output 'WARN    gitleaks not found. The secret-scan hook blocks every git commit until it is installed (winget install Gitleaks.Gitleaks).'
 }
 if (-not (Get-Command kubectl -ErrorAction SilentlyContinue)) {

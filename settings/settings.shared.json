@@ -57,13 +57,13 @@
           {
             "type": "command",
             "if": "Bash(kubectl *)",
-            "command": "bash \"__CLAUDE_SHIT_HOOKS__/kube-context.sh\"",
+            "command": "bash \"__CLAUDE_SHIT_HOOKS__/kube-context.sh\" kubectl",
             "timeout": 15
           },
           {
             "type": "command",
             "if": "Bash(helm *)",
-            "command": "bash \"__CLAUDE_SHIT_HOOKS__/kube-context.sh\"",
+            "command": "bash \"__CLAUDE_SHIT_HOOKS__/kube-context.sh\" helm",
             "timeout": 15
           }
         ]
