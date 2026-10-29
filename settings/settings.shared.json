@@ -45,11 +45,18 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
             "if": "Bash(git commit *)",
+            "command": "bash \"__CLAUDE_SHIT_HOOKS__/secret-scan.sh\"",
+            "timeout": 120,
+            "statusMessage": "Scanning the commit for secrets"
+          },
+          {
+            "type": "command",
+            "if": "PowerShell(git commit *)",
             "command": "bash \"__CLAUDE_SHIT_HOOKS__/secret-scan.sh\"",
             "timeout": 120,
             "statusMessage": "Scanning the commit for secrets"
