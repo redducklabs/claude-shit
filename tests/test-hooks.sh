@@ -139,12 +139,16 @@ assert_eq "clean commit leaves no temp folder" "" "$(ls -A "$hook_tmp")"
 # Without gitleaks on PATH or in a known install folder, commits are blocked.
 empty_home=$TMP_ROOT/empty-home
 mkdir -p "$empty_home"
-if command -v gitleaks >/dev/null 2>&1 || [ -x /usr/local/bin/gitleaks ] || [ -x /home/linuxbrew/.linuxbrew/bin/gitleaks ]; then
+if command -v gitleaks >/dev/null 2>&1 || [ -x /usr/local/bin/gitleaks ] || [ -x /home/linuxbrew/.linuxbrew/bin/gitleaks ] || [ -x /opt/homebrew/bin/gitleaks ]; then
   printf 'skip  missing-gitleaks case (gitleaks is installed on this machine)\n'
 else
   err=$(input 'git commit -m x' | (cd "$TMP_ROOT" && LOCALAPPDATA='' HOME=$empty_home bash "$hooks/secret-scan.sh") 2>&1 >/dev/null); rc=$?
   assert_eq "missing gitleaks blocks commit" 2 "$rc"
   assert_contains "missing gitleaks message" "gitleaks is not installed" "$err"
+  case $(uname -s) in
+    MINGW* | MSYS* | CYGWIN*) assert_contains "missing gitleaks gives install command" "winget install Gitleaks.Gitleaks" "$err" ;;
+    *) assert_contains "missing gitleaks gives install command" "gitleaks_8.30.1_linux_x64.tar.gz | tar -xz -C ~/.local/bin gitleaks" "$err" ;;
+  esac
 fi
 
 # gitleaks installed by winget but not yet on the app's PATH is still found.
