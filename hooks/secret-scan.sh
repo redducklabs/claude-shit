@@ -63,6 +63,7 @@ find_gitleaks() {
     "$local_app_data"/Microsoft/WinGet/Packages/Gitleaks.Gitleaks_*/gitleaks.exe \
     "$HOME"/.local/bin/gitleaks \
     /usr/local/bin/gitleaks \
+    /opt/homebrew/bin/gitleaks \
     /home/linuxbrew/.linuxbrew/bin/gitleaks; do
     if [ -x "$candidate" ]; then
       printf '%s\n' "$candidate"
@@ -73,7 +74,12 @@ find_gitleaks() {
 }
 
 if ! gitleaks_bin=$(find_gitleaks); then
-  echo "Blocked: gitleaks is not installed, so this commit can't be scanned for secrets. Ask the user to install gitleaks (see the claude-shit README), then retry the commit." >&2
+  case $(uname -s) in
+    MINGW* | MSYS* | CYGWIN*) install='winget install Gitleaks.Gitleaks' ;;
+    Darwin) install='brew install gitleaks' ;;
+    *) install='mkdir -p ~/.local/bin && curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz -C ~/.local/bin gitleaks' ;;
+  esac
+  echo "Blocked: gitleaks is not installed, so this commit can't be scanned for secrets. Ask the user to install it with: $install (no restart needed), then retry the commit." >&2
   exit 2
 fi
 
