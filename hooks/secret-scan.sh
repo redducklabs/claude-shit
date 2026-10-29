@@ -141,25 +141,31 @@ findings() {
 # has characters that git or JSON escape, or when its file differs from a parent but no
 # hunk for it could be read.
 new_in_merge() {
-  local list=$1 diff=$report_dir/merge.diff head
-  if ! (
-    while read -r head; do
-      [ -n "$(git for-each-ref --contains "$head" --count=1 --format=x refs/remotes)" ] || exit 1
-      echo "@@NAMES"
-      git -c core.quotePath=false diff --cached --no-renames --name-only -z "$head" | tr '\0' '\n'
-      [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
-      echo "@@DIFF"
-      git -c core.quotePath=false diff --cached --no-color --no-ext-diff --no-renames --text -U0 "$head" || exit 1
-    done <"$(git rev-parse --git-path MERGE_HEAD)"
-  ) >"$diff"; then
+  # Each parent gets its own name list and diff file, so no file name or diff line can be
+  # mistaken for a separator.
+  local list=$1 head parents=0 files=()
+  while read -r head; do
+    parents=$((parents + 1))
+    files+=("$report_dir/parent$parents.names" "$report_dir/parent$parents.diff")
+    if [ -z "$(git for-each-ref --contains "$head" --count=1 --format=x refs/remotes)" ] ||
+      ! git -c core.quotePath=false diff --cached --no-renames --name-only -z "$head" >"$report_dir/parent$parents.z" ||
+      ! tr '\0' '\n' <"$report_dir/parent$parents.z" >"$report_dir/parent$parents.names" ||
+      ! git -c core.quotePath=false diff --cached --no-color --no-ext-diff --no-renames --text -U0 "$head" >"$report_dir/parent$parents.diff"; then
+      cat "$list"
+      return 0
+    fi
+  done <"$(git rev-parse --git-path MERGE_HEAD)"
+  if [ "$parents" -eq 0 ]; then
     cat "$list"
     return 0
   fi
-  awk -F '\t' -v diff="$diff" '
-    FILENAME == diff {
-      if ($0 == "@@NAMES") { parents++; section = "names"; file = ""; next }
-      if ($0 == "@@DIFF") { section = "diff"; next }
-      if (section == "names") { changed[parents, $0] = 1; next }
+  awk -F '\t' -v parents="$parents" '
+    FILENAME ~ /\/parent[0-9]+\.(names|diff)$/ {
+      if (FILENAME != current) {
+        current = FILENAME; file = ""; remaining = 0
+        p = FILENAME; sub(/.*\/parent/, "", p); role = p; sub(/\..*/, "", p); sub(/^[0-9]+\./, "", role)
+      }
+      if (role == "names") { changed[p, $0] = 1; next }
       # Inside a hunk, count its lines: content such as "++ x" shows up as "+++ x".
       if (remaining > 0) { if (substr($0, 1, 1) != "\\") remaining--; next }
       if (substr($0, 1, 11) == "diff --git ") { file = ""; next }
@@ -175,8 +181,8 @@ new_in_merge() {
         n = split(side[2], part, ","); first = part[1] + 0; count = (n > 1) ? part[2] + 0 : 1
         remaining += count
         if (file == "") next
-        hunked[parents, file] = 1
-        for (i = first; i < first + count; i++) added[parents, file, i] = 1
+        hunked[p, file] = 1
+        for (i = first; i < first + count; i++) added[p, file, i] = 1
       }
       next
     }
@@ -191,7 +197,7 @@ new_in_merge() {
       }
       print
     }
-  ' "$diff" "$list"
+  ' "${files[@]}" "$list"
 }
 
 # needs_unstaged: whether the command can commit unstaged changes to tracked files. Reads
@@ -227,7 +233,9 @@ needs_unstaged() {
         } else if (c == "\\" && q == "\"") buf = buf substr(s, ++i, 1)
         else if (c == q) {
           quoted[++nquoted] = buf
-          out = out ((buf ~ /^[^[:space:]]*(git(\.exe)?|commit)$/) ? buf : " Q ")
+          # Put back only a bare git or commit word (a path is fine); anything with shell
+          # syntax in it stays one opaque argument.
+          out = out ((buf ~ /^([A-Za-z]:)?[A-Za-z0-9_.\/\\-]*(git(\.exe)?|commit)$/) ? " " buf " " : " Q ")
           q = ""
         } else buf = buf c
       }

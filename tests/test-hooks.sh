@@ -121,6 +121,8 @@ unstaged 'C:\\Program Files\\Git\\cmd\\git.exe commit -a -m x' 2
 unstaged 'echo `git commit -a -m x`' 2
 unstaged 'git commit --message=x --author=me --untracked-files=no --gpg-sign=K --fixup=HEAD' 1
 unstaged 'git commit -m \"Fix the commit hook\"' 1
+unstaged 'git commit -m \"x;git\" -a' 2
+unstaged 'git commit -m \"x && git\" -a' 2
 
 STUB_RC=0 scan 'git add . && git commit -m \"msg\"'
 assert_eq "chained add and commit blocked" 2 "$rc"
@@ -375,6 +377,17 @@ else
   assert_eq "real gitleaks: secret after a ++ line in a merge blocks" 2 "$rc"
   assert_contains "real gitleaks: secret after a ++ line listed" "app.py:9  aws-access-token" "$err"
   git -C "$merge" merge --abort
+
+  # File names that look like the filter's own markers can't hide a new secret.
+  git -C "$merge" merge -q --no-commit --no-ff origin/main >/dev/null 2>&1
+  for name in @@DIFF @@NAMES parent1.diff; do echo benign >"$merge/$name"; done
+  printf 'k = "AKIA%s"\n' "$(fake_key)" >"$merge/zz.py"
+  git -C "$merge" add @@DIFF @@NAMES parent1.diff zz.py
+  real_hook "$merge" 'git commit --no-edit'
+  assert_eq "real gitleaks: marker-like file names don't hide a new secret" 2 "$rc"
+  assert_contains "real gitleaks: secret next to marker-like names listed" "zz.py:1  aws-access-token" "$err"
+  git -C "$merge" merge --abort
+  rm -f "$merge/@@DIFF" "$merge/@@NAMES" "$merge/parent1.diff" "$merge/zz.py"
 
   # With core.autocrlf, git warns on stderr; gitleaks must still scan, not skip.
   crlf=$TMP_ROOT/crlf
