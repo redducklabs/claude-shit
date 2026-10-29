@@ -92,7 +92,7 @@ If a file in `~/.claude` was edited directly (for example, Claude added a note t
 
 Both hooks are bash scripts. On Windows, Claude Code runs them with Git Bash. Hook output goes straight into Claude's context, so each hook prints a short, capped message and points to a file for detail rather than relaying a tool's full output.
 
-- **`secret-scan.sh`** runs before every `git commit` Claude makes. It scans the staged changes and the unstaged changes to tracked files with gitleaks, and blocks the commit when gitleaks finds a secret, when the scan fails, or when gitleaks isn't installed.
+- **`secret-scan.sh`** runs before every `git commit` Claude makes, through either the Bash tool or (on Windows) the PowerShell tool. It scans the staged changes and the unstaged changes to tracked files with gitleaks, and blocks the commit when gitleaks finds a secret, when the scan fails, or when gitleaks isn't installed.
   - When it blocks, it prints the finding count and at most 10 findings (file, line, rule, fingerprint), under 4 KB in total. The full redacted report is kept in a per-run temp folder (`secret-scan.XXXXXXXX` under `$TMPDIR`), and the message gives its path. A scan error shows the last 10 lines of gitleaks' output and the path of the full log.
   - Because the hook runs before the whole command, it blocks a command that stages and commits in one step (`git add . && git commit ...`): the new files wouldn't be staged yet when it scans. Claude then stages and commits in separate commands.
   - It looks for gitleaks on `PATH`, then in winget's folders and `~/.local/bin`. A running Claude Code app keeps the `PATH` it started with, so a fresh install would otherwise go unseen until the app restarts.

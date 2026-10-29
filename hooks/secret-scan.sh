@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code PreToolUse hook for Bash calls, configured with `if: "Bash(git commit *)"`.
+# Claude Code PreToolUse hook for Bash and PowerShell calls, configured with
+# `if: "Bash(git commit *)"` and `if: "PowerShell(git commit *)"`. Both tools pass the
+# command in tool_input.command, so the same checks apply to either.
 # Scans the staged and unstaged changes to tracked files with gitleaks and blocks the
 # call (exit 2) when it finds a secret, when gitleaks is missing, or when the scan fails.
 # Claude Code also runs `if`-filtered hooks for commands it can't fully parse (variable

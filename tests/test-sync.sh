@@ -44,6 +44,7 @@ out=$(sync 2>&1); rc=$?
 assert_eq "rerun exits 0" 0 "$rc"
 assert_contains "rerun reports up to date" "Up to date." "$out"
 assert_eq "rerun adds no duplicate hooks" 1 "$(settings '.hooks.PreToolUse | length')"
+assert_eq "secret scan covers PowerShell commits" 1 "$(settings '[.hooks.PreToolUse[] | select(.matcher | test("PowerShell")) | .hooks[] | select(.if == "PowerShell(git commit *)" and (.command | contains("secret-scan.sh")))] | length')"
 
 # --check writes nothing and exits 1 when out of date
 printf '\n- extra rule\n' >>"$repo/claude_md/CLAUDE.md"
