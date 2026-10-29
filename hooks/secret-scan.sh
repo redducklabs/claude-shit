@@ -11,6 +11,10 @@
 # stage first and commit in a separate command.
 # When it blocks, it prints a short summary (at most 10 findings, under 4 KB) and keeps
 # the full redacted gitleaks report in a per-run temp folder for the agent to inspect.
+# During a merge, staged findings on lines that are unchanged from every merged-in
+# parent are skipped: that content is already committed upstream. Unstaged changes are
+# scanned only when the command can commit them (-a, --all, -i, -o, -p, a pathspec, or
+# an argument the hook can't read, such as a variable).
 # Limitation: it scans the repository in the session's working directory, so a
 # `git -C <dir> commit` or `cd <dir> && git commit` into another repo is not covered.
 set -u
@@ -103,27 +107,157 @@ scan() { # scan <label> [gitleaks args]: report in $report_dir/<label>.json, log
     --report-format json --report-path "$report_dir/$label.json" >"$report_dir/$label.log" 2>&1
 }
 
-# findings <report>: one "File:Line  RuleID  Fingerprint" line per finding. Reads gitleaks'
-# pretty-printed JSON line by line (one key per line, Fingerprint last), so no jq is needed.
+# findings <report>: one "File<TAB>StartLine<TAB>EndLine<TAB>RuleID<TAB>Fingerprint" line
+# per finding. Reads gitleaks' pretty-printed JSON line by line (one key per line,
+# Fingerprint last), so no jq is needed.
 findings() {
   awk '
     function val(s) { sub(/^[^:]*:[[:space:]]*"?/, "", s); sub(/"?,?[[:space:]]*$/, "", s); return s }
     /^[[:space:]]*"RuleID":/ { rule = val($0) }
-    /^[[:space:]]*"StartLine":/ { line = val($0) }
+    /^[[:space:]]*"StartLine":/ { start = val($0) }
+    /^[[:space:]]*"EndLine":/ { end = val($0) }
     /^[[:space:]]*"File":/ { file = val($0) }
-    /^[[:space:]]*"Fingerprint":/ { print file ":" line "  " rule "  " val($0) }
+    /^[[:space:]]*"Fingerprint":/ { print file "\t" start "\t" end "\t" rule "\t" val($0) }
   ' "$1"
 }
 
-report() { # report <label> <gitleaks exit code>
-  local label=$1 rc=$2 json=$report_dir/$1.json log=$report_dir/$1.log total more=""
+# new_in_merge <findings>: during a merge, keep only findings with at least one line that
+# is new relative to every merged-in parent (MERGE_HEAD). Lines that match a parent are
+# already committed upstream. A finding is also kept when its path has characters that
+# git or JSON escape, and every finding is kept when a diff fails.
+new_in_merge() {
+  local list=$1 diff=$report_dir/merge.diff head
+  if ! (
+    while read -r head; do
+      echo "@@PARENT"
+      git -c core.quotePath=false diff --cached --no-color --no-ext-diff --no-renames --text -U0 "$head" || exit 1
+    done <"$(git rev-parse --git-path MERGE_HEAD)"
+  ) >"$diff"; then
+    cat "$list"
+    return 0
+  fi
+  awk -F '\t' -v diff="$diff" '
+    FILENAME == diff {
+      if ($0 == "@@PARENT") { parents++; file = ""; next }
+      if (substr($0, 1, 4) == "+++ ") { file = substr($0, 5); file = (file ~ /^b\//) ? substr(file, 3) : ""; next }
+      if (file != "" && $0 ~ /^@@ /) {
+        h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/ @@.*/, "", h)
+        n = split(h, part, ","); first = part[1] + 0; count = (n > 1) ? part[2] + 0 : 1
+        for (i = first; i < first + count; i++) added[parents, file, i] = 1
+      }
+      next
+    }
+    {
+      if (parents == 0 || $1 ~ /["\\]/) { print; next }
+      for (p = 1; p <= parents; p++) {
+        new = 0
+        for (i = $2; i <= $3; i++) if ((p, $1, i) in added) new = 1
+        if (!new) next
+      }
+      print
+    }
+  ' "$diff" "$list"
+}
+
+# needs_unstaged: whether the command can commit unstaged changes to tracked files. Reads
+# the JSON-escaped command on stdin; exit 0 means scan them. A quoted string counts as one
+# argument, and its contents are checked as a command too. Every `git ... commit` (or
+# `$VAR ... commit`) is checked; an argument that isn't a known option counts as a pathspec.
+needs_unstaged() {
+  awk '
+    function decode(s,   out, i, c) {
+      out = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\") {
+          c = substr(s, ++i, 1)
+          if (c == "n") c = "\n"; else if (c == "t") c = " "; else if (c == "r") c = ""
+          else if (c == "u") { i += 4; c = "?" }
+        }
+        out = out c
+      }
+      return out
+    }
+    # strip(s): s with each quoted string replaced by " Q "; their contents go to quoted[].
+    function strip(s,   out, i, c, q, buf) {
+      out = ""; q = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (q == "") {
+          if (c == "\"" || c == sq) { q = c; buf = ""; continue }
+          out = out c
+        } else if (c == "\\" && q == "\"") buf = buf substr(s, ++i, 1)
+        else if (c == q) { quoted[++nquoted] = buf; out = out " Q "; q = "" }
+        else buf = buf c
+      }
+      if (q != "") unterminated = 1
+      return out
+    }
+    function check(s,   segs, nseg, k, t, nt, j, gitseen, tok, flags, m, ch) {
+      gsub(/\\\n|`\n/, " ", s)
+      gsub(/&&|\|\||[;&|()\n]/, "\n", s)
+      nseg = split(s, segs, "\n")
+      for (k = 1; k <= nseg; k++) {
+        nt = split(segs[k], t, /[[:space:]]+/)
+        gitseen = 0
+        for (j = 1; j <= nt; j++) {
+          if (t[j] ~ /(^|[\/\\])git(\.exe)?$/ || t[j] ~ /^\$/) { gitseen = 1; continue }
+          if (gitseen && t[j] == "commit") break
+        }
+        for (j++; j <= nt; j++) {
+          tok = t[j]
+          if (tok == "") continue
+          if (tok ~ /^[0-9]*[<>]/) { if (tok ~ /^[0-9]*[<>]+$/) j++; continue }
+          if (tok ~ /^-[^-]/) {
+            flags = substr(tok, 2)
+            for (m = 1; m <= length(flags); m++) {
+              ch = substr(flags, m, 1)
+              if (ch ~ /[aiop]/) return 1
+              if (ch ~ /[mFCct]/) { if (m == length(flags)) j++; break }
+              if (ch ~ /[Su]/) break
+            }
+            continue
+          }
+          if (tok == "--" || tok ~ /^--(all|include|only|interactive|patch|pathspec-from-file)(=|$)/) return 1
+          if (tok ~ /^--(message|file|reuse-message|reedit-message|fixup|squash|author|date|template|cleanup|trailer)$/) { j++; continue }
+          if (tok ~ /^--/) continue
+          return 1
+        }
+      }
+      return 0
+    }
+    BEGIN { sq = sprintf("%c", 39) }
+    {
+      cmd = strip(decode($0))
+      if (unterminated || check(cmd)) exit 0
+      for (q = 1; q <= nquoted; q++) if (check(quoted[q])) exit 0
+      exit 1
+    }
+  '
+}
+
+# report <label> <gitleaks exit code> [findings list]: block on leaks or on a failed scan.
+report() {
+  local label=$1 rc=$2 list=${3:-} json=$report_dir/$1.json log=$report_dir/$1.log total all more="" skipped=""
   if [ "$rc" -eq 3 ]; then
-    total=$(findings "$json" | wc -l | tr -d ' ')
+    if [ -z "$list" ]; then
+      list=$report_dir/$label.tsv
+      findings "$json" >"$list"
+    fi
+    total=$(wc -l <"$list" | tr -d ' ')
+    all=$(findings "$json" | wc -l | tr -d ' ')
+    if [ "$total" -eq 0 ] && [ "$all" -gt 0 ]; then
+      return 0
+    fi
+    if [ "$total" -lt "$all" ]; then
+      skipped=$(printf ' (%s more are already on the branch being merged and were skipped)' "$((all - total))")
+    fi
     if [ "$total" -gt "$max_findings" ]; then
       more=$(printf '\n...and %s more' "$((total - max_findings))")
     fi
-    block "$(printf 'Blocked: gitleaks found %s secret(s) in the %s changes. Remove them (and rotate any real credential) before committing.\nFull redacted report, to inspect (for example with jq) instead of re-running the scan: %s\n%s%s' \
-      "$total" "$label" "$(show_path "$json")" "$(findings "$json" | head -n "$max_findings" | cut -c "1-$max_line")" "$more")"
+    block "$(printf 'Blocked: gitleaks found %s secret(s) in the %s changes%s. Remove them (and rotate any real credential) before committing.\nFull redacted report, to inspect (for example with jq) instead of re-running the scan: %s\n%s%s' \
+      "$total" "$label" "$skipped" "$(show_path "$json")" \
+      "$(head -n "$max_findings" "$list" | awk -F '\t' '{ print $1 ":" $2 "  " $4 "  " $5 }' | cut -c "1-$max_line")" "$more")"
   elif [ "$rc" -ne 0 ]; then
     block "$(printf 'Blocked: the gitleaks scan of the %s changes failed (exit %s), so the commit was not verified.\nFull output: %s\nLast lines:\n%s' \
       "$label" "$rc" "$(show_path "$log")" "$(tail -n "$max_findings" "$log" | cut -c "1-$max_line")")"
@@ -139,10 +273,21 @@ report_dir=$(mktemp -d "${TMPDIR:-/tmp}/secret-scan.XXXXXXXX") || {
   echo "Blocked: could not create a temp folder for the gitleaks report, so the commit was not verified." >&2
   exit 2
 }
-scan staged --staged; report staged $?
+scan staged --staged
+rc=$?
+if [ "$rc" -eq 3 ] && git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+  findings "$report_dir/staged.json" >"$report_dir/staged.all.tsv"
+  new_in_merge "$report_dir/staged.all.tsv" >"$report_dir/staged.tsv"
+  report staged "$rc" "$report_dir/staged.tsv"
+else
+  report staged "$rc"
+fi
 
 # Unstaged changes to tracked files: `git commit -a`, `--all`, or a pathspec commits them too.
-scan unstaged; report unstaged $?
+if json_field command | needs_unstaged; then
+  scan unstaged
+  report unstaged $?
+fi
 
 rm -rf "$report_dir"
 exit 0

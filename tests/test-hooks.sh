@@ -57,8 +57,46 @@ scan() { # scan <command> -> sets rc, err, ncalls
 # secret-scan.sh
 STUB_RC=0 scan 'git commit -m \"fix a bug\"'
 assert_eq "clean commit allowed" 0 "$rc"
-assert_eq "staged and unstaged changes scanned" 2 "$ncalls"
+assert_eq "plain commit scans only staged changes" 1 "$ncalls"
 assert_contains "scan uses --staged" "--staged" "$(cat "$calls")"
+
+# The unstaged scan runs only when the command can commit unstaged changes.
+# unstaged <command> <expected scans: 1 = staged only, 2 = staged and unstaged>
+unstaged() {
+  STUB_RC=0 scan "$1"
+  assert_eq "scans for: $1" "$2" "$ncalls"
+}
+unstaged 'git commit -am x' 2
+unstaged 'git commit -a -m x' 2
+unstaged 'git commit --all -m x' 2
+unstaged 'git commit -i file.txt -m x' 2
+unstaged 'git commit --include file.txt -m x' 2
+unstaged 'git commit -o -m x file.txt' 2
+unstaged 'git commit -p' 2
+unstaged 'git commit -m x -- file.txt' 2
+unstaged 'git commit -m x file.txt' 2
+unstaged 'git commit -m \"msg\" \"file name.txt\"' 2
+unstaged 'git commit --pathspec-from-file=list.txt -m x' 2
+# shellcheck disable=SC2016 # the $ is part of the command text under test
+unstaged 'git commit $FLAGS -m x' 2
+# shellcheck disable=SC2016
+unstaged '$GIT commit -a -m x' 2
+unstaged 'bash -c \"git commit -a -m x\"' 2
+unstaged 'git commit -m \"unterminated' 2
+unstaged 'git commit -m \"fix -a flag handling\"' 1
+unstaged 'git commit -mfix' 1
+unstaged 'git commit -m x -m y --amend --no-edit -v -s' 1
+unstaged 'git commit --author \"A <a@b.c>\" --date now -m x' 1
+unstaged 'git commit -C HEAD --reset-author' 1
+unstaged 'git commit -F msg.txt' 1
+unstaged 'git commit -m x 2>&1 | tail -5' 1
+unstaged 'cd sub && git commit -m x' 1
+# shellcheck disable=SC2016
+unstaged 'git commit -m \"$(cat <<'"'"'EOF'"'"'\nFix the commit hook\n\nMore detail.\nEOF\n)\"' 1
+unstaged 'git commit -F - <<'"'"'EOF'"'"'\nsubject\nEOF' 1
+unstaged 'git log --grep commit' 1
+unstaged 'gh pr view --json commits' 1
+unstaged 'grep -r commit .' 1
 
 STUB_RC=0 scan 'git add . && git commit -m \"msg\"'
 assert_eq "chained add and commit blocked" 2 "$rc"
@@ -83,13 +121,13 @@ assert_eq "non-commit command not scanned" 0 "$ncalls"
 STUB_RC=3 scan 'git log --oneline -5'
 assert_eq "git log passes through" 0 "$rc"
 
-STUB_RC=0 scan 'git -C sub commit -m x'
+STUB_RC=0 scan 'git -C sub commit -am x'
 assert_eq "git -C dir commit is scanned" 2 "$ncalls"
 
-STUB_RC=0 scan 'git \\\ncommit -m x'
+STUB_RC=0 scan 'git \\\ncommit -am x'
 assert_eq "line-continued git commit is scanned" 2 "$ncalls"
 
-STUB_RC=0 scan 'git\tcommit -m x'
+STUB_RC=0 scan 'git\tcommit -am x'
 assert_eq "tab-separated git commit is scanned" 2 "$ncalls"
 
 STUB_RC=3 scan 'echo commit'
@@ -162,7 +200,7 @@ if command -v gitleaks >/dev/null 2>&1; then
 else
   err=$(input 'git commit -m x' | (cd "$TMP_ROOT" && LOCALAPPDATA=$fake_lad HOME=$empty_home STUB_RC=0 bash "$hooks/secret-scan.sh") 2>&1 >/dev/null); rc=$?
   assert_eq "winget gitleaks off PATH is used" 0 "$rc"
-  assert_eq "winget gitleaks ran both scans" 2 "$(wc -l <"$calls" | tr -d ' ')"
+  assert_eq "winget gitleaks ran the staged scan" 1 "$(wc -l <"$calls" | tr -d ' ')"
 fi
 
 # Real gitleaks (GITLEAKS_BIN, or gitleaks on PATH): hundreds of fake keys in a temp repo.
@@ -203,6 +241,73 @@ else
   assert_eq "real gitleaks: hundreds of findings" yes "$([ "${total:-0}" -ge 200 ] && echo yes || echo "no: $total")"
   assert_eq "real gitleaks: report is redacted" 0 "$(grep -c 'AKIA[A-Z2-7]\{16\}' "$report")"
   printf '      real gitleaks output: %s bytes, %s findings\n' "$bytes" "$total"
+
+  # real_hook <repo> <command> -> sets rc, err
+  real_hook() {
+    local dir_json=$1
+    command -v cygpath >/dev/null 2>&1 && dir_json=$(cygpath -w "$1" | sed 's/\\/\\\\/g')
+    err=$(printf '{"cwd":"%s","tool_input":{"command":"%s"}}' "$dir_json" "$2" \
+      | (cd "$1" && TMPDIR=$hook_tmp PATH="$real_bin:$PATH" bash "$hooks/secret-scan.sh") 2>&1 >/dev/null)
+    rc=$?
+  }
+  fake_key() { head -c 4000 /dev/urandom | LC_ALL=C tr -dc 'A-Z2-7' | head -c 16; }
+  new_repo() {
+    git init -q -b main "$1"
+    git -C "$1" config core.autocrlf false
+    git -C "$1" config user.email test@example.com
+    git -C "$1" config user.name test
+  }
+
+  # A finding in an unstaged tracked file blocks only commands that can commit it.
+  dirty=$TMP_ROOT/dirty
+  new_repo "$dirty"
+  echo ok >"$dirty/t.py"
+  echo ok >"$dirty/u.txt"
+  git -C "$dirty" add . && git -C "$dirty" commit -qm init
+  printf 'aws = "AKIA%s"\n' "$(fake_key)" >"$dirty/t.py"
+  echo changed >"$dirty/u.txt"
+  git -C "$dirty" add u.txt
+  for c in 'git log --grep commit' 'gh pr view --json commits' 'git commit -m x'; do
+    real_hook "$dirty" "$c"
+    assert_eq "real gitleaks: unstaged finding ignored by: $c" "0:" "$rc:$err"
+  done
+  real_hook "$dirty" 'git commit -am x'
+  assert_eq "real gitleaks: unstaged finding blocks commit -a" 2 "$rc"
+  assert_contains "real gitleaks: commit -a names the unstaged changes" "in the unstaged changes" "$err"
+
+  # Merges: findings already on the merged-in branch are skipped, new ones still block.
+  merge=$TMP_ROOT/merge
+  new_repo "$merge"
+  seq 1 20 >"$merge/app.py"
+  git -C "$merge" add . && git -C "$merge" commit -qm base
+  git -C "$merge" switch -qc feature
+  sed 's/^3$/feature edit/' "$merge/app.py" >"$merge/app.tmp" && mv "$merge/app.tmp" "$merge/app.py"
+  git -C "$merge" commit -qam feature
+  git -C "$merge" switch -q main
+  sed "s/^15\$/upstream = \"AKIA$(fake_key)\"/" "$merge/app.py" >"$merge/app.tmp" && mv "$merge/app.tmp" "$merge/app.py"
+  mkdir -p "$merge/lib dir"
+  for i in $(seq 1 200); do echo "line $i" >"$merge/lib dir/f$i.txt"; done
+  printf 'k = "AKIA%s"\n' "$(fake_key)" >"$merge/lib dir/fixture.py"
+  git -C "$merge" add . && git -C "$merge" commit -qm upstream
+  git -C "$merge" switch -q feature
+  git -C "$merge" merge -q --no-commit --no-ff main >/dev/null 2>&1
+  real_hook "$merge" 'git commit --no-edit'
+  assert_eq "real gitleaks: merge with findings only from main is allowed" "0:" "$rc:$err"
+
+  # A resolution that adds a new secret is still blocked, and the skipped count is shown.
+  sed "s/^18\$/resolved = \"AKIA$(fake_key)\"/" "$merge/app.py" >"$merge/app.tmp" && mv "$merge/app.tmp" "$merge/app.py"
+  git -C "$merge" add app.py
+  real_hook "$merge" 'git commit --no-edit'
+  assert_eq "real gitleaks: new secret in a merge blocks" 2 "$rc"
+  assert_contains "real gitleaks: merge lists only the new finding" "found 1 secret(s) in the staged changes (2 more are already on the branch being merged and were skipped)" "$err"
+  assert_contains "real gitleaks: merge names the new line" "app.py:18  aws-access-token" "$err"
+  git -C "$merge" merge --abort
+
+  # A squash merge has no MERGE_HEAD, so everything coming in is scanned.
+  git -C "$merge" merge -q --squash main >/dev/null 2>&1
+  real_hook "$merge" 'git commit -m squash'
+  assert_eq "real gitleaks: squash merge scans everything" 2 "$rc"
+  assert_contains "real gitleaks: squash merge reports both findings" "found 2 secret(s)" "$err"
 fi
 
 notrepo=$TMP_ROOT/notrepo
