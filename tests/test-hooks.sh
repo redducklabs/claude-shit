@@ -130,6 +130,12 @@ assert_eq "line-continued git commit is scanned" 2 "$ncalls"
 STUB_RC=0 scan 'git\tcommit -am x'
 assert_eq "tab-separated git commit is scanned" 2 "$ncalls"
 
+# PowerShell tool input has the same shape; its line continuation is a backtick.
+STUB_RC=0 scan 'git `\ncommit -m x'
+assert_eq "PowerShell line-continued git commit is scanned" "0:2" "$rc:$ncalls"
+STUB_RC=0 scan 'git add -A; git commit -m x'
+assert_eq "PowerShell chained add and commit blocked" "2:0" "$rc:$ncalls"
+
 STUB_RC=3 scan 'echo commit'
 assert_eq "any command mentioning commit is scanned (fail closed)" 2 "$rc"
 
