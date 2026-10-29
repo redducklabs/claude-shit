@@ -20,6 +20,7 @@ while [ \$# -gt 0 ]; do
   shift
 done
 awk -v n="\${STUB_LOG_LINES:-1}" 'BEGIN { for (i = 1; i <= n; i++) print "stub gitleaks output " i }'
+if [ -n "\${STUB_ERR:-}" ]; then echo '1:01AM ERR error="stderr is not empty"'; fi
 if [ -n "\$report" ]; then
   n=\${STUB_FINDINGS:-1}
   [ "\${STUB_RC:-0}" -eq 3 ] || n=0
@@ -89,14 +90,37 @@ unstaged 'git commit -m x -m y --amend --no-edit -v -s' 1
 unstaged 'git commit --author \"A <a@b.c>\" --date now -m x' 1
 unstaged 'git commit -C HEAD --reset-author' 1
 unstaged 'git commit -F msg.txt' 1
-unstaged 'git commit -m x 2>&1 | tail -5' 1
+unstaged 'git commit -m x | tail -5' 1
+unstaged 'git commit -m x > out.txt' 1
+unstaged 'git commit -m x 2>&1 | tail -5' 2
+unstaged 'git commit -m x 2>&1 cfg.py' 2
+unstaged 'git commit -m x &>/dev/null cfg.py' 2
+# shellcheck disable=SC2016 # the $ is part of the command text under test
+unstaged 'git commit -m $(date +%s) -a' 2
+unstaged 'git commit -F <(echo hi) -a' 2
+unstaged '(git commit -a -m x)' 2
+# shellcheck disable=SC2016
+unstaged 'git commit -m x `printf -- -a`' 2
 unstaged 'cd sub && git commit -m x' 1
 # shellcheck disable=SC2016
 unstaged 'git commit -m \"$(cat <<'"'"'EOF'"'"'\nFix the commit hook\n\nMore detail.\nEOF\n)\"' 1
 unstaged 'git commit -F - <<'"'"'EOF'"'"'\nsubject\nEOF' 1
 unstaged 'git log --grep commit' 1
 unstaged 'gh pr view --json commits' 1
-unstaged 'grep -r commit .' 1
+# Fail closed on anything the parser can't vouch for.
+unstaged 'grep -r commit .' 2
+unstaged 'git commit --al -m x' 2
+unstaged 'git commit --inc file.txt -m x' 2
+unstaged 'git commit -m x --unknown-option' 2
+unstaged 'git commit -xm y' 2
+unstaged '\"git\" commit -a -m x' 2
+unstaged 'git \"commit\" -a -m x' 2
+unstaged 'g\\it commit -a -m x' 2
+unstaged 'C:\\Program Files\\Git\\cmd\\git.exe commit -a -m x' 2
+# shellcheck disable=SC2016 # the backticks are part of the command text under test
+unstaged 'echo `git commit -a -m x`' 2
+unstaged 'git commit --message=x --author=me --untracked-files=no --gpg-sign=K --fixup=HEAD' 1
+unstaged 'git commit -m \"Fix the commit hook\"' 1
 
 STUB_RC=0 scan 'git add . && git commit -m \"msg\"'
 assert_eq "chained add and commit blocked" 2 "$rc"
@@ -131,7 +155,7 @@ STUB_RC=0 scan 'git\tcommit -am x'
 assert_eq "tab-separated git commit is scanned" 2 "$ncalls"
 
 # PowerShell tool input has the same shape; its line continuation is a backtick.
-STUB_RC=0 scan 'git `\ncommit -m x'
+STUB_RC=0 scan 'git `\ncommit -am x'
 assert_eq "PowerShell line-continued git commit is scanned" "0:2" "$rc:$ncalls"
 STUB_RC=0 scan 'git add -A; git commit -m x'
 assert_eq "PowerShell chained add and commit blocked" "2:0" "$rc:$ncalls"
@@ -175,6 +199,11 @@ assert_contains "error shows last log line" "stub gitleaks output 5000" "$err"
 assert_not_contains "error hides early log lines" "stub gitleaks output 4990" "$err"
 assert_file "error log file kept" "$(report_path "$err")"
 unset STUB_RC
+
+# gitleaks logging an error but exiting 0 (its "stderr is not empty" case) is a failed scan.
+STUB_ERR=1 STUB_RC=0 scan 'git commit -m x'
+assert_eq "gitleaks ERR with exit 0 blocks commit" 2 "$rc"
+assert_contains "gitleaks ERR reported as failed scan" "scan of the staged changes failed (exit 1)" "$err"
 
 rm -rf "${hook_tmp:?}"/*
 STUB_RC=0 scan 'git commit -m x'
@@ -296,9 +325,29 @@ else
   printf 'k = "AKIA%s"\n' "$(fake_key)" >"$merge/lib dir/fixture.py"
   git -C "$merge" add . && git -C "$merge" commit -qm upstream
   git -C "$merge" switch -q feature
+
+  # Until main is on a remote-tracking branch, MERGE_HEAD isn't trusted: everything is scanned.
   git -C "$merge" merge -q --no-commit --no-ff main >/dev/null 2>&1
   real_hook "$merge" 'git commit --no-edit'
+  assert_eq "real gitleaks: merge of an unpushed branch scans everything" 2 "$rc"
+  assert_contains "real gitleaks: unpushed merge reports both findings" "found 2 secret(s) in the staged changes." "$err"
+  git -C "$merge" merge --abort
+
+  git init -q --bare "$TMP_ROOT/merge-remote.git"
+  git -C "$merge" remote add origin "$TMP_ROOT/merge-remote.git"
+  git -C "$merge" push -q origin main 2>/dev/null
+  git -C "$merge" merge -q --no-commit --no-ff origin/main >/dev/null 2>&1
+  real_hook "$merge" 'git commit --no-edit'
   assert_eq "real gitleaks: merge with findings only from main is allowed" "0:" "$rc:$err"
+
+  # A new secret in a path with a space (git ends that diff header with a tab) still blocks.
+  printf 'k2 = "AKIA%s"\n' "$(fake_key)" >>"$merge/lib dir/fixture.py"
+  git -C "$merge" add "lib dir/fixture.py"
+  real_hook "$merge" 'git commit --no-edit'
+  assert_eq "real gitleaks: new secret in a spaced path during a merge blocks" 2 "$rc"
+  assert_contains "real gitleaks: spaced path finding listed" "lib dir/fixture.py:2  aws-access-token" "$err"
+  git -C "$merge" merge --abort
+  git -C "$merge" merge -q --no-commit --no-ff origin/main >/dev/null 2>&1
 
   # A resolution that adds a new secret is still blocked, and the skipped count is shown.
   sed "s/^18\$/resolved = \"AKIA$(fake_key)\"/" "$merge/app.py" >"$merge/app.tmp" && mv "$merge/app.tmp" "$merge/app.py"
@@ -310,10 +359,33 @@ else
   git -C "$merge" merge --abort
 
   # A squash merge has no MERGE_HEAD, so everything coming in is scanned.
-  git -C "$merge" merge -q --squash main >/dev/null 2>&1
+  git -C "$merge" merge -q --squash origin/main >/dev/null 2>&1
   real_hook "$merge" 'git commit -m squash'
   assert_eq "real gitleaks: squash merge scans everything" 2 "$rc"
   assert_contains "real gitleaks: squash merge reports both findings" "found 2 secret(s)" "$err"
+  git -C "$merge" reset -q --hard
+
+  # Content lines starting with "++ " look like diff headers in a -U0 diff; a new secret
+  # in a later hunk of the same file must still block.
+  git -C "$merge" merge -q --no-commit --no-ff origin/main >/dev/null 2>&1
+  awk -v key="AKIA$(fake_key)" 'NR == 5 { print "++ x"; next } NR == 9 { print "late = \"" key "\""; next } { print }' \
+    "$merge/app.py" >"$merge/app.tmp" && mv "$merge/app.tmp" "$merge/app.py"
+  git -C "$merge" add app.py
+  real_hook "$merge" 'git commit --no-edit'
+  assert_eq "real gitleaks: secret after a ++ line in a merge blocks" 2 "$rc"
+  assert_contains "real gitleaks: secret after a ++ line listed" "app.py:9  aws-access-token" "$err"
+  git -C "$merge" merge --abort
+
+  # With core.autocrlf, git warns on stderr; gitleaks must still scan, not skip.
+  crlf=$TMP_ROOT/crlf
+  new_repo "$crlf"
+  git -C "$crlf" config core.autocrlf true
+  echo ok >"$crlf/cfg.py"
+  git -C "$crlf" add . 2>/dev/null && git -C "$crlf" commit -qm init 2>/dev/null
+  printf 'aws = "AKIA%s"\n' "$(fake_key)" >"$crlf/cfg.py"
+  real_hook "$crlf" 'git commit -am x'
+  assert_eq "real gitleaks: autocrlf warning doesn't skip the unstaged scan" 2 "$rc"
+  assert_contains "real gitleaks: autocrlf finding reported" "in the unstaged changes" "$err"
 fi
 
 notrepo=$TMP_ROOT/notrepo

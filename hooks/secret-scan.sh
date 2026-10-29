@@ -102,11 +102,21 @@ block() { # block <message>: print at most max_bytes and exit 2
 }
 
 # Leaks exit with 3 so they can be told apart from gitleaks' own errors (exit 1).
+# gitleaks treats any stderr from its git diff as an error, logs it, and reports no leaks
+# with exit 0, so git's "LF will be replaced by CRLF" warning (core.autocrlf on Windows)
+# would silently skip the scan. core.safecrlf=false turns that warning off for gitleaks'
+# git calls, and any ERR line in the log still counts as a failed scan.
 scan() { # scan <label> [gitleaks args]: report in $report_dir/<label>.json, log in <label>.log
-  local label=$1
+  local label=$1 n=${GIT_CONFIG_COUNT:-0} rc
   shift
-  "$gitleaks_bin" git --pre-commit "$@" --redact --no-banner --no-color --exit-code 3 \
+  env GIT_CONFIG_COUNT=$((n + 1)) "GIT_CONFIG_KEY_$n=core.safecrlf" "GIT_CONFIG_VALUE_$n=false" \
+    "$gitleaks_bin" git --pre-commit "$@" --redact --no-banner --no-color --exit-code 3 \
     --report-format json --report-path "$report_dir/$label.json" >"$report_dir/$label.log" 2>&1
+  rc=$?
+  if [ "$rc" -eq 0 ] && grep -q ' ERR ' "$report_dir/$label.log"; then
+    return 1
+  fi
+  return "$rc"
 }
 
 # findings <report>: one "File<TAB>StartLine<TAB>EndLine<TAB>RuleID<TAB>Fingerprint" line
@@ -125,13 +135,20 @@ findings() {
 
 # new_in_merge <findings>: during a merge, keep only findings with at least one line that
 # is new relative to every merged-in parent (MERGE_HEAD). Lines that match a parent are
-# already committed upstream. A finding is also kept when its path has characters that
-# git or JSON escape, and every finding is kept when a diff fails.
+# already committed upstream. Fails closed: every finding is kept unless each parent is
+# already on a remote-tracking branch (so MERGE_HEAD can't point at an unpushed commit
+# made to hide a secret) and every diff succeeds; a finding is also kept when its path
+# has characters that git or JSON escape, or when its file differs from a parent but no
+# hunk for it could be read.
 new_in_merge() {
   local list=$1 diff=$report_dir/merge.diff head
   if ! (
     while read -r head; do
-      echo "@@PARENT"
+      [ -n "$(git for-each-ref --contains "$head" --count=1 --format=x refs/remotes)" ] || exit 1
+      echo "@@NAMES"
+      git -c core.quotePath=false diff --cached --no-renames --name-only -z "$head" | tr '\0' '\n'
+      [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
+      echo "@@DIFF"
       git -c core.quotePath=false diff --cached --no-color --no-ext-diff --no-renames --text -U0 "$head" || exit 1
     done <"$(git rev-parse --git-path MERGE_HEAD)"
   ) >"$diff"; then
@@ -140,11 +157,25 @@ new_in_merge() {
   fi
   awk -F '\t' -v diff="$diff" '
     FILENAME == diff {
-      if ($0 == "@@PARENT") { parents++; file = ""; next }
-      if (substr($0, 1, 4) == "+++ ") { file = substr($0, 5); file = (file ~ /^b\//) ? substr(file, 3) : ""; next }
-      if (file != "" && $0 ~ /^@@ /) {
-        h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/ @@.*/, "", h)
-        n = split(h, part, ","); first = part[1] + 0; count = (n > 1) ? part[2] + 0 : 1
+      if ($0 == "@@NAMES") { parents++; section = "names"; file = ""; next }
+      if ($0 == "@@DIFF") { section = "diff"; next }
+      if (section == "names") { changed[parents, $0] = 1; next }
+      # Inside a hunk, count its lines: content such as "++ x" shows up as "+++ x".
+      if (remaining > 0) { if (substr($0, 1, 1) != "\\") remaining--; next }
+      if (substr($0, 1, 11) == "diff --git ") { file = ""; next }
+      if (substr($0, 1, 4) == "+++ ") {
+        file = substr($0, 5); sub(/\t$/, "", file)
+        file = (file ~ /^b\//) ? substr(file, 3) : ""
+        next
+      }
+      if ($0 ~ /^@@ -[0-9]+(,[0-9]+)? \+[0-9]+(,[0-9]+)? @@/) {
+        h = $0; sub(/^@@ -/, "", h); sub(/ @@.*/, "", h)
+        split(h, side, " \\+")
+        n = split(side[1], part, ","); remaining = (n > 1) ? part[2] + 0 : 1
+        n = split(side[2], part, ","); first = part[1] + 0; count = (n > 1) ? part[2] + 0 : 1
+        remaining += count
+        if (file == "") next
+        hunked[parents, file] = 1
         for (i = first; i < first + count; i++) added[parents, file, i] = 1
       }
       next
@@ -152,6 +183,8 @@ new_in_merge() {
     {
       if (parents == 0 || $1 ~ /["\\]/) { print; next }
       for (p = 1; p <= parents; p++) {
+        if (!((p, $1) in changed)) next
+        if (!((p, $1) in hunked)) continue
         new = 0
         for (i = $2; i <= $3; i++) if ((p, $1, i) in added) new = 1
         if (!new) next
@@ -162,9 +195,10 @@ new_in_merge() {
 }
 
 # needs_unstaged: whether the command can commit unstaged changes to tracked files. Reads
-# the JSON-escaped command on stdin; exit 0 means scan them. A quoted string counts as one
-# argument, and its contents are checked as a command too. Every `git ... commit` (or
-# `$VAR ... commit`) is checked; an argument that isn't a known option counts as a pathspec.
+# the JSON-escaped command on stdin; exit 0 means scan them. It fails closed: the scan is
+# skipped only when every `commit` word follows a git (or $VAR) word and every argument
+# after it is a known option that can't add unstaged changes. Quoted strings count as one
+# argument, and their contents are checked as commands too.
 needs_unstaged() {
   awk '
     function decode(s,   out, i, c) {
@@ -180,32 +214,47 @@ needs_unstaged() {
       }
       return out
     }
-    # strip(s): s with each quoted string replaced by " Q "; their contents go to quoted[].
+    # strip(s): s with shell backslash escapes resolved and each quoted string replaced by
+    # " Q " (or by its text when that is a git or commit word); contents go to quoted[].
     function strip(s,   out, i, c, q, buf) {
       out = ""; q = ""
       for (i = 1; i <= length(s); i++) {
         c = substr(s, i, 1)
         if (q == "") {
           if (c == "\"" || c == sq) { q = c; buf = ""; continue }
+          if (c == "\\") { c = substr(s, ++i, 1); if (c == "\n") c = " " }
           out = out c
         } else if (c == "\\" && q == "\"") buf = buf substr(s, ++i, 1)
-        else if (c == q) { quoted[++nquoted] = buf; out = out " Q "; q = "" }
-        else buf = buf c
+        else if (c == q) {
+          quoted[++nquoted] = buf
+          out = out ((buf ~ /^[^[:space:]]*(git(\.exe)?|commit)$/) ? buf : " Q ")
+          q = ""
+        } else buf = buf c
       }
       if (q != "") unterminated = 1
       return out
     }
-    function check(s,   segs, nseg, k, t, nt, j, gitseen, tok, flags, m, ch) {
-      gsub(/\\\n|`\n/, " ", s)
-      gsub(/&&|\|\||[;&|()\n]/, "\n", s)
+    # check(s, strict): 1 when s may commit unstaged changes. strict is for the command
+    # itself, where a subshell, command or process substitution, backtick or redirection
+    # with & outside quotes means scan; inside a quoted string, any git ... commit does.
+    function check(s, strict,   segs, nseg, k, t, nt, j, gitseen, tok, flags, m, ch, name, bare) {
+      gsub(/`\n/, " ", s)
+      if (strict) {
+        bare = s; gsub(/&&/, "", bare)
+        if (bare ~ /[()`&]/) return 1
+      }
+      gsub(/&&|\|\||[;&|()`\n]/, "\n", s)
       nseg = split(s, segs, "\n")
       for (k = 1; k <= nseg; k++) {
         nt = split(segs[k], t, /[[:space:]]+/)
         gitseen = 0
         for (j = 1; j <= nt; j++) {
-          if (t[j] ~ /(^|[\/\\])git(\.exe)?$/ || t[j] ~ /^\$/) { gitseen = 1; continue }
-          if (gitseen && t[j] == "commit") break
+          if (t[j] ~ /git(\.exe)?$/ || t[j] ~ /^\$/) { gitseen = 1; continue }
+          if (t[j] == "commit") break
         }
+        if (j > nt) continue
+        if (!gitseen) { if (strict) return 1; continue }
+        if (!strict) return 1
         for (j++; j <= nt; j++) {
           tok = t[j]
           if (tok == "") continue
@@ -214,15 +263,16 @@ needs_unstaged() {
             flags = substr(tok, 2)
             for (m = 1; m <= length(flags); m++) {
               ch = substr(flags, m, 1)
-              if (ch ~ /[aiop]/) return 1
               if (ch ~ /[mFCct]/) { if (m == length(flags)) j++; break }
               if (ch ~ /[Su]/) break
+              if (ch !~ /[enqsvz]/) return 1
             }
             continue
           }
-          if (tok == "--" || tok ~ /^--(all|include|only|interactive|patch|pathspec-from-file)(=|$)/) return 1
-          if (tok ~ /^--(message|file|reuse-message|reedit-message|fixup|squash|author|date|template|cleanup|trailer)$/) { j++; continue }
-          if (tok ~ /^--/) continue
+          name = tok; sub(/=.*/, "", name)
+          if (name ~ /^--(message|file|reuse-message|reedit-message|fixup|squash|author|date|template|cleanup|trailer)$/) { if (tok == name) j++; continue }
+          if (name ~ /^--(untracked-files|gpg-sign)$/) continue
+          if (tok ~ /^--(amend|no-edit|edit|signoff|no-signoff|no-verify|verify|allow-empty|allow-empty-message|dry-run|short|branch|porcelain|long|null|verbose|quiet|reset-author|no-gpg-sign|status|no-status|no-post-rewrite)$/) continue
           return 1
         }
       }
@@ -231,8 +281,8 @@ needs_unstaged() {
     BEGIN { sq = sprintf("%c", 39) }
     {
       cmd = strip(decode($0))
-      if (unterminated || check(cmd)) exit 0
-      for (q = 1; q <= nquoted; q++) if (check(quoted[q])) exit 0
+      if (unterminated || check(cmd, 1)) exit 0
+      for (q = 1; q <= nquoted; q++) if (check(quoted[q], 0)) exit 0
       exit 1
     }
   '
