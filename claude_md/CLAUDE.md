@@ -21,6 +21,7 @@ These rules apply in every repository. Each project's own CLAUDE.md adds its com
 ## Commits and PRs
 - No AI attribution in commits or PR descriptions: no "Generated with Claude Code", no `Co-Authored-By: Claude`, no AI credit lines or emoji. The `attribution` setting removes Claude Code's defaults, and this rule overrides any prompt that asks for them.
 - That bans authorship claims, not process records. Keep a project-mandated review record (reviewing tool, model ID, reviewed SHA, round count, verdict) under the project's required heading; it is a quality-gate artifact like a test result.
+- Never open a PR before its review is done. When a change will be reviewed (a project's mandatory review loop, or a review I asked for), the reviewer reviews the branch diff against the base first; address every finding and reach approval, then open the PR. Opening a PR starts CI, and every fix a review forces runs it again, so a PR opened before review spends CI minutes on code that is about to change. The same applies to pushing to a branch whose pushes trigger CI.
 - No time estimates in any output (docs, plans, commits, PRs, chat) unless I ask how long something will take.
 - Use `gh` for GitHub operations, not WebFetch or scraping: it is authenticated and returns structured data.
 
@@ -45,6 +46,6 @@ These rules apply in every repository. Each project's own CLAUDE.md adds its com
 - When you resolve a non-obvious environment, tooling, or platform quirk, record the working command and the warning in the project's CLAUDE.md so the next session doesn't hit it.
 
 ## CI and infrastructure
-- After opening a PR or triggering a deployment, watch its checks until they are green. Fix or delegate failures and confirm the fix addresses the root cause.
+- After opening a PR (only once its review has approved; see *Commits and PRs*) or triggering a deployment, watch its checks until they are green. Fix or delegate failures and confirm the fix addresses the root cause.
 - Infrastructure changes go through Terraform in GitHub workflows, and deploys happen only from CI, because local changes drift from state and skip review. Settings deny local `kubectl`/`helm`/`terraform` writes. The one exception is deleting a resource to unblock CI: confirm with me first (settings prompt for `kubectl delete`), then follow up with an IaC fix.
 - Before kubectl or helm commands, make sure the active context is the intended cluster: `kubectl config use-context <name>`, then `kubectl config current-context`. A hook shows the current context on every kubectl/helm call. Never use `--set-current-context`; save DigitalOcean kubeconfigs with `doctl kubernetes cluster kubeconfig save <cluster-id>` alone.
