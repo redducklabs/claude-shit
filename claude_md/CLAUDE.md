@@ -31,6 +31,11 @@ These rules apply in every repository. Each project's own CLAUDE.md adds its com
 - Report facts and results, not predictions: no "should work", no "simple" or "complex" labels, and no "best" or "recommended" without a stated reason.
 - Ask when requirements are ambiguous. Don't add unrequested features or rework code that works, but include the error handling and validation the request needs to work reliably.
 
+## Writing as me
+- When you write anything that represents me or goes out in my voice (emails, replies, messages, letters, posts, comments, or drafts of any of these), first read my style guide at `D:\repos\writing-style-guide\aron-writing-style-guide.md` in full and follow it: tone by audience, length, word choice, sign-off. Read it fresh each time; don't work from memory.
+- If the file is missing, say so and stop; don't guess my style. If the clone exists, run `git -C D:\repos\writing-style-guide pull --ff-only` first so you use the latest version.
+- This doesn't apply to your replies to me in chat, or to code, code comments, and technical docs, which follow the project's conventions.
+
 ## Docs and versions
 - Before writing code against a library, API, or platform the codebase doesn't already use, or one whose behavior varies by version, look up current docs (Context7, then official docs). Do the same when troubleshooting its errors. Don't guess signatures from memory.
 - For new dependencies, GitHub Actions, and container images, use the latest stable version. Check the project README first; if versions are missing or stale, use `version-research-expert`.
